@@ -57,6 +57,8 @@ export abstract class deviceBase {
     protected accessory: PlatformAccessory,
     protected device: device & devicesConfig,
   ) {
+    this.device.webhook = this.device.webhook ?? true;
+
     this.api = this.platform.api;
     this.log = this.platform.log;
     this.config = this.platform.config;
@@ -702,7 +704,7 @@ export abstract class deviceBase {
         statusCode = 161;
       }
       this.debugErrorLog(`statusCode: ${previousStatusCode} is now statusCode: ${statusCode}, because the hubDeviceId: ${this.device.hubDeviceId}`
-          + ` is set to the same as the deviceId: ${this.device.deviceId}, meaning the device is it's own hub.`);
+        + ` is set to the same as the deviceId: ${this.device.deviceId}, meaning the device is it's own hub.`);
     }
     switch (statusCode) {
       case 151:

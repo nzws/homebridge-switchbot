@@ -1,7 +1,7 @@
 {
   "displayName": "SwitchBot",
-  "name": "@switchbot/homebridge-switchbot",
-  "version": "3.7.0",
+  "name": "@nzws/homebridge-switchbot",
+  "version": "3.7.0-patch.1",
   "description": "The SwitchBot plugin allows you to access your SwitchBot device(s) from HomeKit.",
   "author": {
     "name": "SwitchBot",
