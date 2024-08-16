@@ -182,8 +182,8 @@ export abstract class deviceBase {
     if (device.maxRetry !== 0) {
       deviceConfig['maxRetry'] = device.maxRetry;
     }
-    if (device.webhook === true) {
-      deviceConfig['webhook'] = device.webhook;
+    if (device.webhook === true || device.webhook === undefined) {
+      deviceConfig['webhook'] = true;
     }
     if (device.connectionType !== '') {
       deviceConfig['connectionType'] = device.connectionType;
