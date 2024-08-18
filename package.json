@@ -1,8 +1,8 @@
 {
-  "displayName": "SwitchBot",
+  "displayName": "@nzws/homebridge-switchbot",
   "name": "@nzws/homebridge-switchbot",
-  "version": "3.7.0-patch.1",
-  "description": "The SwitchBot plugin allows you to access your SwitchBot device(s) from HomeKit.",
+  "version": "3.7.0-patch.2",
+  "description": "The customized version of homebridge-switchbot",
   "author": {
     "name": "SwitchBot",
     "url": "https://github.com/SwitchBot",
@@ -19,10 +19,10 @@
   "icon": "https://raw.githubusercontent.com/OpenWonderLabs/homebridge-switchbot/latest/branding/icon.png",
   "repository": {
     "type": "git",
-    "url": "git://github.com/OpenWonderLabs/homebridge-switchbot.git"
+    "url": "git://github.com/nzws/homebridge-switchbot.git"
   },
   "bugs": {
-    "url": "https://github.com/OpenWonderLabs/homebridge-switchbot/issues"
+    "url": "https://github.com/nzws/homebridge-switchbot/issues"
   },
   "engineStrict": true,
   "engines": {
