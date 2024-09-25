@@ -60,7 +60,7 @@ export abstract class deviceBase {
     protected accessory: PlatformAccessory,
     protected device: device & devicesConfig,
   ) {
-    this.device.webhook = this.device.webhook ?? true;
+    this.device.webhook = this.device.webhook ?? true
 
     this.api = this.platform.api
     this.log = this.platform.log
