@@ -268,7 +268,7 @@ export class Contact extends deviceBase {
     await this.debugLog('parseStatusWebhook')
     await this.debugLog(`(detectionState, brightness, openState) = Webhook:(${this.webhookContext.detectionState}, ${this.webhookContext.brightness}, ${this.webhookContext.openState}), current:(${this.MotionSensor?.MotionDetected}, ${this.LightSensor?.CurrentAmbientLightLevel}, ${this.ContactSensor.ContactSensorState})`)
     // ContactSensorState
-    this.ContactSensor.ContactSensorState = this.webhookContext.openState === 'open' ? 1 : 0
+    this.ContactSensor.ContactSensorState = this.webhookContext.openState === 'open' || this.webhookContext.openState === 'timeOutNotClose' ? 1 : 0
     await this.debugLog(`ContactSensorState: ${this.ContactSensor.ContactSensorState}`)
     if (!this.device.contact?.hide_motionsensor && this.MotionSensor?.Service) {
       // MotionDetected
