@@ -191,7 +191,7 @@ export class Contact extends deviceBase {
   async BLEparseStatus(): Promise<void> {
     await this.debugLog('BLEparseStatus')
     // ContactSensorState
-    this.ContactSensor.ContactSensorState = this.serviceData.doorState === 'open'
+    this.ContactSensor.ContactSensorState = this.serviceData.doorState === 'open' || this.serviceData.doorState === 'timeOutNotClose'
       ? this.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
       : this.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
     await this.debugLog(`ContactSensorState: ${this.ContactSensor.ContactSensorState}`)
@@ -222,7 +222,7 @@ export class Contact extends deviceBase {
   async openAPIparseStatus(): Promise<void> {
     await this.debugLog('openAPIparseStatus')
     // Contact State
-    this.ContactSensor.ContactSensorState = this.deviceStatus.openState === 'open'
+    this.ContactSensor.ContactSensorState = this.deviceStatus.openState === 'open' || this.deviceStatus.openState === 'timeOutNotClose'
       ? this.hap.Characteristic.ContactSensorState.CONTACT_NOT_DETECTED
       : this.hap.Characteristic.ContactSensorState.CONTACT_DETECTED
     await this.debugLog(`ContactSensorState: ${this.ContactSensor.ContactSensorState}`)

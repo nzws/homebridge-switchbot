@@ -2,7 +2,7 @@
   "name": "@nzws/homebridge-switchbot",
   "displayName": "SwitchBot",
   "type": "module",
-  "version": "3.8.2-patch.1",
+  "version": "3.8.2-patch.2",
   "description": "The customized version of homebridge-switchbot",
   "author": "SwitchBot <support@wondertechlabs.com> (https://github.com/SwitchBot)",
   "contributors": [
