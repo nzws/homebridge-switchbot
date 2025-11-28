@@ -3,10 +3,10 @@
  * waterheater.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { bodyChange, irdevice } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
 import type { irDevicesConfig } from '../settings.js'
-import type { irdevice } from '../types/irdevicelist.js'
 
 import { irdeviceBase } from './irdevice.js'
 
@@ -47,7 +47,7 @@ export class WaterHeater extends irdeviceBase {
   }
 
   async ActiveSet(value: CharacteristicValue): Promise<void> {
-    await this.debugLog(`Active: ${value}`)
+    this.debugLog(`Active: ${value}`)
 
     this.Valve.Active = value
     if (this.Valve.Active === this.hap.Characteristic.Active.ACTIVE) {
@@ -66,46 +66,45 @@ export class WaterHeater extends irdeviceBase {
    * WaterHeater     "command"       "turnOn"          "default"         set to ON state
    */
   async pushWaterHeaterOnChanges(): Promise<void> {
-    await this.debugLog(`pushWaterHeaterOnChanges Active: ${this.Valve.Active}, disablePushOn: ${this.disablePushOn}`)
-    if (this.Valve.Active === this.hap.Characteristic.Active.ACTIVE && !this.disablePushOn) {
+    this.debugLog(`pushWaterHeaterOnChanges Active: ${this.Valve.Active}, disablePushOn: ${this.deviceDisablePushOn}`)
+    if (this.Valve.Active === this.hap.Characteristic.Active.ACTIVE && !this.deviceDisablePushOn) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOn()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushWaterHeaterOffChanges(): Promise<void> {
-    await this.debugLog(`pushWaterHeaterOffChanges Active: ${this.Valve.Active}, disablePushOff: ${this.disablePushOff}`)
-    if (this.Valve.Active === this.hap.Characteristic.Active.INACTIVE && !this.disablePushOff) {
+    this.debugLog(`pushWaterHeaterOffChanges Active: ${this.Valve.Active}, disablePushOff: ${this.deviceDisablePushOff}`)
+    if (this.Valve.Active === this.hap.Characteristic.Active.INACTIVE && !this.deviceDisablePushOff) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOff()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushChanges(bodyChange: any): Promise<void> {
-    await this.debugLog('pushChanges')
+    this.debugLog('pushChanges')
     if (this.device.connectionType === 'OpenAPI') {
-      this.infoLog(`Sending request to SwitchBot API, body: ${bodyChange},`)
+      this.infoLog(`Sending request to SwitchBot API, body: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.pushStatusCodes(statusCode, deviceStatus)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.successfulPushChange(statusCode, deviceStatus, bodyChange)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        await this.pushStatusCodes(deviceStatus)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          await this.successfulPushChange(deviceStatus, bodyChange)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
@@ -113,12 +112,12 @@ export class WaterHeater extends irdeviceBase {
         await this.pushChangeError(e)
       }
     } else {
-      await this.warnLog(`Connection Type: ${this.device.connectionType}, commands will not be sent to OpenAPI`)
+      this.warnLog(`Connection Type: ${this.device.connectionType}, commands will not be sent to OpenAPI`)
     }
   }
 
   async updateHomeKitCharacteristics(): Promise<void> {
-    await this.debugLog('updateHomeKitCharacteristics')
+    this.debugLog('updateHomeKitCharacteristics')
     // Active
     await this.updateCharacteristic(this.Valve.Service, this.hap.Characteristic.Active, this.Valve.Active, 'Active')
   }

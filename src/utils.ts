@@ -2,113 +2,9 @@
  *
  * util.ts: @switchbot/homebridge-switchbot platform class.
  */
+import type { blindTilt, curtain, curtain3, device } from 'node-switchbot'
+
 import type { devicesConfig } from './settings.js'
-import type { blindTilt, curtain, curtain3, device } from './types/devicelist.js'
-
-export enum SwitchBotModel {
-  HubMini = 'W0202200',
-  HubPlus = 'SwitchBot Hub S1',
-  Hub2 = 'W3202100',
-  Bot = 'SwitchBot S1',
-  Curtain = 'W0701600',
-  Curtain3 = 'W2400000',
-  Humidifier = 'W0801800',
-  Plug = 'SP11', // Currently only available in Japan
-  Meter = 'SwitchBot MeterTH S1',
-  MeterPlusJP = 'W2201500',
-  MeterPlusUS = 'W2301500',
-  OutdoorMeter = 'W3400010',
-  MotionSensor = 'W1101500',
-  ContactSensor = 'W1201500',
-  ColorBulb = 'W1401400',
-  StripLight = 'W1701100',
-  PlugMiniUS = 'W1901400/W1901401',
-  PlugMiniJP = 'W2001400/W2001401',
-  Lock = 'W1601700',
-  LockPro = 'W3500000',
-  Keypad = 'W2500010',
-  KeypadTouch = 'W2500020',
-  K10 = 'K10+',
-  WoSweeper = 'WoSweeper',
-  WoSweeperMini = 'WoSweeperMini',
-  RobotVacuumCleanerS1 = 'W3011000', // Currently only available in Japan.
-  RobotVacuumCleanerS1Plus = 'W3011010', // Currently only available in Japan.
-  RobotVacuumCleanerS10 = 'W3211800',
-  Remote = 'Remote',
-  UniversalRemote = 'UniversalRemote',
-  CeilingLight = 'W2612230/W2612240', // Currently only available in Japan.
-  CeilingLightPro = 'W2612210/W2612220', // Currently only available in Japan.
-  IndoorCam = 'W1301200',
-  PanTiltCam = 'W1801200',
-  PanTiltCam2K = 'W3101100',
-  BlindTilt = 'W2701600',
-  BatteryCirculatorFan = 'W3800510',
-  WaterDetector = 'W4402000',
-  Unknown = 'Unknown',
-}
-
-export enum SwitchBotBLEModel {
-  Bot = 'H',
-  Curtain = 'c',
-  Curtain3 = '{',
-  Humidifier = 'e',
-  Meter = 'T',
-  MeterPlus = 'i',
-  Hub2 = 'v',
-  OutdoorMeter = 'w',
-  MotionSensor = 's',
-  ContactSensor = 'd',
-  ColorBulb = 'u',
-  StripLight = 'r',
-  PlugMiniUS = 'g',
-  PlugMiniJP = 'j',
-  Lock = 'o',
-  CeilingLight = 'q', // Currently only available in Japan.
-  CeilingLightPro = 'n', // Currently only available in Japan.
-  BlindTilt = 'x',
-  Unknown = 'Unknown',
-}
-
-export enum SwitchBotBLEModelName {
-  Bot = 'WoHand',
-  Hub2 = 'WoHub2',
-  ColorBulb = 'WoBulb',
-  Curtain = 'WoCurtain',
-  Curtain3 = 'WoCurtain3',
-  Humidifier = 'WoHumi',
-  Meter = 'WoSensorTH',
-  Lock = 'WoSmartLock',
-  PlugMini = 'WoPlugMini',
-  StripLight = 'WoStrip',
-  MeterPlus = 'WoSensorTHPlus',
-  OutdoorMeter = 'WoIOSensorTH',
-  ContactSensor = 'WoContact',
-  MotionSensor = 'WoMotion',
-  BlindTilt = 'WoBlindTilt',
-  Unknown = 'Unknown',
-}
-
-export enum SwitchBotBLEModelFriendlyName {
-  Bot = 'Bot',
-  Hub2 = 'Hub 2',
-  ColorBulb = 'Color Bulb',
-  Curtain = 'Curtain',
-  Curtain3 = 'Curtain 3',
-  Humidifier = 'Humidifier',
-  Meter = 'Meter',
-  Lock = 'Lock',
-  LockPro = 'Lock Pro',
-  PlugMini = 'Plug Mini',
-  StripLight = 'Strip Light',
-  MeterPlus = 'Meter Plus',
-  OutdoorMeter = 'Outdoor Meter',
-  ContactSensor = 'Contact Sensor',
-  MotionSensor = 'Motion Sensor',
-  BlindTilt = 'Blind Tilt',
-  CeilingLight = 'Ceiling Light',
-  CeilingLightPro = 'Ceiling Light Pro',
-  Unknown = 'Unknown',
-}
 
 export enum BlindTiltMappingMode {
   OnlyUp = 'only_up',
@@ -159,6 +55,25 @@ export function convertUnits(value: number, unit: string, convert?: string): num
 }
 
 /**
+ * Safely serializes an object to a JSON string, handling circular references.
+ *
+ * @param obj - The object to be serialized.
+ * @returns The JSON string representation of the object.
+ */
+export function safeStringify(obj: any) {
+  const seen = new WeakSet()
+  return JSON.stringify(obj, (_key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return
+      }
+      seen.add(value)
+    }
+    return value
+  }, '  ')
+}
+
+/**
  * Formats a device ID as a MAC address.
  * Ensures the device ID does not already contain colons.
  *
@@ -176,6 +91,7 @@ export function formatDeviceIdAsMac(deviceId: string, cassSensative?: boolean): 
 
   const macAddressRegex = /^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/i
   const hexRegex = /^[0-9a-f]{12}$/i
+  const vacuumFormatRegex = /^[a-z0-9]{12,18}$/i
 
   // Check if the deviceId is already in a valid MAC address format
   if (macAddressRegex.test(deviceId)) {
@@ -188,7 +104,13 @@ export function formatDeviceIdAsMac(deviceId: string, cassSensative?: boolean): 
     return cassSensative ? formattedDeviceId : formattedDeviceId.toLowerCase()
   }
 
-  throw new Error('Invalid device ID format. Must be a valid MAC address or a 12-character hexadecimal string.')
+  // Check if the deviceId matches the custom format
+  if (vacuumFormatRegex.test(deviceId)) {
+    const formattedDeviceId = deviceId.slice(-12).match(/.{1,2}/g)!.join(':')
+    return cassSensative ? formattedDeviceId : formattedDeviceId.toLowerCase()
+  }
+
+  throw new Error(`Invalid device ID format. Must be a valid MAC address, a 12-character hexadecimal string, or a 12 to 18-character alphanumeric string. Device ID: ${deviceId}`)
 }
 
 export function rgb2hs(r: any, g: any, b: any) {
@@ -631,7 +553,7 @@ export function m2hs(m) {
     389: [45.6, 27.2],
     390: [45.8, 27.2],
     391: [46, 27.2],
-    392: [46.2, 27.2],
+    392: [46.2, 27.3],
     393: [46.4, 27.3],
     394: [46.5, 27.3],
     395: [46.7, 27.3],

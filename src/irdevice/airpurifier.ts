@@ -3,10 +3,10 @@
  * airpurifier.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { bodyChange, irdevice } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
 import type { irDevicesConfig } from '../settings.js'
-import type { irdevice } from '../types/irdevicelist.js'
 
 import { irdeviceBase } from './irdevice.js'
 
@@ -98,7 +98,7 @@ export class AirPurifier extends irdeviceBase {
   }
 
   async ActiveSet(value: CharacteristicValue): Promise<void> {
-    await this.debugLog(`Set Active: ${value}`)
+    this.debugLog(`Set Active: ${value}`)
 
     this.AirPurifier.Active = value
     if (this.AirPurifier.Active === this.hap.Characteristic.Active.ACTIVE) {
@@ -145,35 +145,35 @@ export class AirPurifier extends irdeviceBase {
    * AirPurifier:        "command"       "highSpeed"      "default"         =        fan speed to high
    */
   async pushAirPurifierOnChanges(): Promise<void> {
-    await this.debugLog(`pushAirPurifierOnChanges Active: ${this.AirPurifier.Active}, disablePushOn: ${this.disablePushOn}`)
-    if (this.AirPurifier.Active === this.hap.Characteristic.Active.ACTIVE && !this.disablePushOn) {
+    this.debugLog(`pushAirPurifierOnChanges Active: ${this.AirPurifier.Active}, disablePushOn: ${this.deviceDisablePushOn}`)
+    if (this.AirPurifier.Active === this.hap.Characteristic.Active.ACTIVE && !this.deviceDisablePushOn) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOn()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushAirPurifierOffChanges(): Promise<void> {
-    await this.debugLog(`pushAirPurifierOffChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.disablePushOff}`)
-    if (this.AirPurifier.Active === this.hap.Characteristic.Active.INACTIVE && !this.disablePushOn) {
+    this.debugLog(`pushAirPurifierOffChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.deviceDisablePushOff}`)
+    if (this.AirPurifier.Active === this.hap.Characteristic.Active.INACTIVE && !this.deviceDisablePushOn) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOff()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushAirPurifierStatusChanges(): Promise<void> {
-    await this.debugLog(`pushAirPurifierStatusChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.disablePushOff},  disablePushOn: ${this.disablePushOn}`)
+    this.debugLog(`pushAirPurifierStatusChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.deviceDisablePushOff}, disablePushOn: ${this.deviceDisablePushOn}`)
     if (!this.Busy) {
       this.Busy = true
       this.AirPurifier.CurrentHeaterCoolerState = this.hap.Characteristic.CurrentHeaterCoolerState.IDLE
@@ -185,17 +185,17 @@ export class AirPurifier extends irdeviceBase {
   }
 
   async pushAirPurifierDetailsChanges(): Promise<void> {
-    await this.debugLog(`pushAirPurifierDetailsChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.disablePushOff},  disablePushOn: ${this.disablePushOn}`)
+    this.debugLog(`pushAirPurifierDetailsChanges Active: ${this.AirPurifier.Active}, disablePushOff: ${this.deviceDisablePushOff}, disablePushOn: ${this.deviceDisablePushOn}`)
     this.CurrentAPTemp = this.TemperatureSensor!.CurrentTemperature ?? 24
     this.CurrentAPMode = this.CurrentMode ?? 1
     this.CurrentAPFanSpeed = this.CurrentFanSpeed ?? 1
     this.APActive = this.AirPurifier.Active === 1 ? 'on' : 'off'
     const parameter = `${this.CurrentAPTemp},${this.CurrentAPMode},${this.CurrentAPFanSpeed},${this.APActive}`
-    const bodyChange = JSON.stringify({
+    const bodyChange: bodyChange = {
       command: 'setAll',
       parameter: `${parameter}`,
       commandType: 'command',
-    })
+    }
     if (this.AirPurifier.Active === 1) {
       if ((Number(this.TemperatureSensor!.CurrentTemperature) || 24) < (this.LastTemperature || 30)) {
         this.AirPurifier.CurrentHeaterCoolerState = this.hap.Characteristic.CurrentHeaterCoolerState.COOLING
@@ -209,18 +209,17 @@ export class AirPurifier extends irdeviceBase {
   }
 
   async pushChanges(bodyChange: any): Promise<void> {
-    await this.debugLog('pushChanges')
+    this.debugLog('pushChanges')
     if (this.device.connectionType === 'OpenAPI') {
-      this.infoLog(`Sending request to SwitchBot API, body: ${bodyChange},`)
+      this.infoLog(`Sending request to SwitchBot API, body: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.pushStatusCodes(statusCode, deviceStatus)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.successfulPushChange(statusCode, deviceStatus, bodyChange)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        await this.pushStatusCodes(deviceStatus)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          await this.successfulPushChange(deviceStatus, bodyChange)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
@@ -233,7 +232,7 @@ export class AirPurifier extends irdeviceBase {
   }
 
   async updateHomeKitCharacteristics(): Promise<void> {
-    await this.debugLog('updateHomeKitCharacteristics')
+    this.debugLog('updateHomeKitCharacteristics')
     // Active
     await this.updateCharacteristic(this.AirPurifier.Service, this.hap.Characteristic.Active, this.AirPurifier.Active, 'Active')
     // CurrentAirPurifierState

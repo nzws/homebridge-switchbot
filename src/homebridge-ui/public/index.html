@@ -71,7 +71,7 @@
         </tr>
       </tbody>
     </table>
-    <p class="text-center">External Accessories Will Not Display Here.</p>
+    <p class="text-center">External accessories will not be displayed here.</p>
   </div>
 </div>
 <div id="pageSupport" class="mt-4" style="display: none">
@@ -171,6 +171,9 @@
           document.getElementById('version').innerHTML = context.version;
           document.getElementById('deviceType').innerHTML = context.deviceType;
           document.getElementById('connectionType').innerHTML = context.connectionType;
+          document.getElementById('refreshRate').innerHTML = context.refreshRate;
+          document.getElementById('updateRate').innerHTML = context.updateRate;
+          document.getElementById('pushRate').innerHTML = context.pushRate;
           document.getElementById('deviceTable').style.display = 'inline-table';
           homebridge.hideSpinner();
         };

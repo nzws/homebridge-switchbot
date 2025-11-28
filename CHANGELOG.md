@@ -2,6 +2,134 @@
 
 All notable changes to this project will be documented in this file. This project uses [Semantic Versioning](https://semver.org/)
 
+## [4.3.1](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.3.1) (2025-03-04)
+
+# *No New Releases During Lent*
+
+### What's Changed
+- Fixed issue with plugin config not displaying.
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.3.0...v4.3.1
+
+## [4.3.0](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.3.0) (2025-01-24)
+
+### What's Changed
+- Add Support for Relay Switch 1 & Relay Switch 1PM with OpenAPI
+- Add Meter Pro & Meter Pro (CO2) as `meterType` for IR AirConditioner
+- Fixed SwitchBot Meter Pro Battery Error #1160
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.2.0...v4.3.0
+
+## [4.2.0](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.2.0) (2025-01-23)
+
+### What's Changed
+- Add option to disable platform BLE for specific devices.
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.7...v4.2.0
+
+## [4.1.7](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.7) (2024-12-22)
+
+### What's Changed
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.6...v4.1.7
+
+## [4.1.6](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.6) (2024-12-21)
+
+### What's Changed
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.5...v4.1.6
+
+## [4.1.5](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.5) (2024-11-27)
+
+### What's Changed
+- Update default refresh rate
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.4...v4.1.5
+
+## [4.1.4](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.4) (2024-11-18)
+
+### What's Changed
+- Remove unneeded unknown casting [#1113](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1113), Thanks [@dnicolson](https://github.com/dnicolson)
+- Remove additional space in logging [#1111](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1111), Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix service data check [#1110](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1110), Thanks [@dnicolson](https://github.com/dnicolson)
+- Update default refresh rate [#1109](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1109), Thanks [@dnicolson](https://github.com/dnicolson)
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.3...v4.1.4
+
+## [4.1.3](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.3) (2024-11-05)
+
+### What's Changed
+- Fix characteristic warnings [#1104](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1104), Thanks [@dnicolson](https://github.com/dnicolson)
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.2...v4.1.3
+
+## [4.1.2](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.2) (2024-11-04)
+
+### What's Changed
+- Fix refreshRate Issue
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.1...v4.1.2
+
+## [4.1.1](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.1) (2024-11-02)
+
+### What's Changed
+- Remove unneeded light level check [#1096](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1096), Thanks [@dnicolson](https://github.com/dnicolson)
+- Remove unneeded async [#1089](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1089), [#1094](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1094), & [#1097](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1097) ; Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix characteristic warning [#1093](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1093), Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix light level [#1092](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1092), Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix device types [#1091](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1091), Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix curtain light sensor [#1090](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1090), Thanks [@dnicolson](https://github.com/dnicolson)
+- Fix max retry [#1088](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1088), Thanks [@dnicolson](https://github.com/dnicolson)
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.1.0...v4.1.1
+
+## [4.1.0](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.1.0) (2024-10-21)
+
+### What's Changed
+- Add `Meter Pro` deviceType Support
+- Fix `node-switchbot` noble issue.
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v4.0.0...v4.1.0
+
+## [4.0.0](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.0.0) (2024-10-11)
+
+### What's Changed
+#### ⚠️ Breaking Changes
+- Added `deviceType` based config
+  - This allows you to set a setting that will be used across the same deviceType
+  - `deviceType` based config settings can be over written by individual device settings set by the deviceId
+- Added `remoteType` based config
+  - This allows you to set a setting that will be used across the same IR remoteType
+  - `remoteType` based config settings can be over written by individual device settings set by the deviceId
+- All device specific configs have been moved to the same level on the config to elimate the use of multiple of the same config and to better support the new `deviceType` based config.
+  - ** ⚠️ If you have config set for any of the following SwitchBot device Types: `Curtain`, `Blind Tilt`, `Color Bulb`, `Strip Light`, `Hub`, `Meter`, `Meter Plus`, `Humidifier`, `Contact Sensor`, `Motion Sensor`, `Water Detector`, `Ceiling Light`, or `Lock`; you will need to re-setup your config for that deviceId**
+  - ** ⚠️ If you have config set for any of the following IR remote Types: `Fan`, `DIY Fan`, `Light`, `DIY Light`, `Air Conditioner`, `DIY Air Conditioner`, or `Others`; you will need to re-setup your config for that deviceId**
+- OpenAPI is now support by Version [3.0.0](https://github.com/OpenWonderLabs/node-switchbot/releases/latest) of [`node-switchbot`](https://github.com/OpenWonderLabs/node-switchbot), so made changes to refect that.
+
+#### Other Changes
+- Add `K10+ Pro` deviceType Support
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v3.8.3...v4.0.0
+
+## [3.8.3](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v3.8.3) (2024-10-09)
+
+### What's Changed
+- Fix incorrect handling of openState in Contact Sensor [#1061](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1061), Thanks [@nzws](https://github.com/nzws)
+- Fix light level stuck at max [#1066](https://github.com/OpenWonderLabs/homebridge-switchbot/pull/1066), Thanks [@4gra](https://github.com/4gra)
+- Housekeeping and updated dependencies.
+
+**Full Changelog**: https://github.com/OpenWonderLabs/homebridge-switchbot/compare/v3.8.2...v3.8.3
+
 ## [3.8.2](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v3.8.2) (2024-09-19)
 
 ### What's Changed

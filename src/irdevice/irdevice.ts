@@ -1,16 +1,12 @@
 /* Copyright(C) 2021-2024, donavanbecker (https://github.com/donavanbecker). All rights reserved.
  *
- * device.ts: @switchbot/homebridge-switchbot.
+ * irdevice.ts: @switchbot/homebridge-switchbot.
  */
 import type { API, CharacteristicValue, HAP, Logging, PlatformAccessory, Service } from 'homebridge'
+import type { bodyChange, irdevice } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { irDevicesConfig, SwitchBotPlatformConfig } from '../settings.js'
-import type { irdevice } from '../types/irdevicelist.js'
-
-import { request } from 'undici'
-
-import { Devices } from '../settings.js'
+import type { irAirConfig, irDevicesConfig, irFanConfig, irLightConfig, irOtherConfig, SwitchBotPlatformConfig } from '../settings.js'
 
 export abstract class irdeviceBase {
   public readonly api: API
@@ -20,9 +16,14 @@ export abstract class irdeviceBase {
 
   // Config
   protected deviceLogging!: string
-  protected disablePushOn!: boolean
-  protected disablePushOff!: boolean
-  protected disablePushDetail?: boolean
+  protected deviceRefreshRate!: number
+  protected deviceUpdateRate!: number
+  protected devicePushRate!: number
+  protected deviceMaxRetries!: number
+  protected deviceDelayBetweenRetries!: number
+  protected deviceDisablePushOn!: boolean
+  protected deviceDisablePushOff!: boolean
+  protected deviceDisablePushDetail?: boolean
 
   constructor(
     protected readonly platform: SwitchBotPlatform,
@@ -34,11 +35,10 @@ export abstract class irdeviceBase {
     this.config = this.platform.config
     this.hap = this.api.hap
 
-    this.getDeviceLogSettings(device)
+    this.getDeviceLogSettings(accessory, device)
+    this.getDeviceRateSettings(device)
     this.getDeviceConfigSettings(device)
     this.getDeviceContext(accessory, device)
-    this.disablePushOnChanges(device)
-    this.disablePushOffChanges(device)
 
     // Set accessory information
     accessory
@@ -52,20 +52,46 @@ export abstract class irdeviceBase {
       .setCharacteristic(this.hap.Characteristic.SerialNumber, device.deviceId)
   }
 
-  async getDeviceLogSettings(device: irdevice & irDevicesConfig): Promise<void> {
-    if (this.platform.debugMode) {
-      this.deviceLogging = this.accessory.context.logging = 'debugMode'
-      await this.debugWarnLog(`Using Debug Mode Logging: ${this.deviceLogging}`)
-    } else if (device.logging) {
-      this.deviceLogging = this.accessory.context.logging = device.logging
-      await this.debugWarnLog(`Using Device Config Logging: ${this.deviceLogging}`)
-    } else if (this.config.logging) {
-      this.deviceLogging = this.accessory.context.logging = this.config.logging
-      await this.debugWarnLog(`Using Platform Config Logging: ${this.deviceLogging}`)
-    } else {
-      this.deviceLogging = this.accessory.context.logging = 'standard'
-      await this.debugWarnLog(`Logging Not Set, Using: ${this.deviceLogging}`)
-    }
+  async getDeviceLogSettings(accessory: PlatformAccessory, device: irdevice & irDevicesConfig): Promise<void> {
+    this.deviceLogging = this.platform.debugMode ? 'debugMode' : device.logging ?? this.platform.platformLogging ?? 'standard'
+    const logging = this.platform.debugMode ? 'Debug Mode' : device.logging ? 'Device Config' : this.platform.platformLogging ? 'Platform Config' : 'Default'
+    accessory.context.deviceLogging = this.deviceLogging
+    this.debugLog(`Using ${logging} Logging: ${this.deviceLogging}`)
+  }
+
+  async getDeviceRateSettings(device: irdevice & irDevicesConfig): Promise<void> {
+    // refreshRate
+    this.deviceRefreshRate = device.refreshRate ?? this.platform.platformRefreshRate ?? 300
+    const refreshRate = device.refreshRate ? 'Device Config' : this.platform.platformRefreshRate ? 'Platform Config' : 'Default'
+    this.accessory.context.refreshRate = this.deviceRefreshRate
+    // updateRate
+    this.deviceUpdateRate = device.updateRate ?? this.platform.platformUpdateRate ?? 5
+    const updateRate = device.updateRate ? 'Device Config' : this.platform.platformUpdateRate ? 'Platform Config' : 'Default'
+    this.accessory.context.updateRate = this.deviceUpdateRate
+    // pushRate
+    this.devicePushRate = device.pushRate ?? this.platform.platformPushRate ?? 0.1
+    const pushRate = device.pushRate ? 'Device Config' : this.platform.platformPushRate ? 'Platform Config' : 'Default'
+    this.accessory.context.pushRate = this.devicePushRate
+    this.debugLog(`Using ${refreshRate} refreshRate: ${this.deviceRefreshRate}, ${updateRate} updateRate: ${this.deviceUpdateRate}, ${pushRate} pushRate: ${this.devicePushRate}`)
+    // maxRetries
+    this.deviceMaxRetries = device.maxRetries ?? this.platform.platformMaxRetries ?? 2
+    const maxRetries = device.maxRetries ? 'Device' : this.platform.platformMaxRetries ? 'Platform' : 'Default'
+    this.debugLog(`Using ${maxRetries} Max Retries: ${this.deviceMaxRetries}`)
+    // delayBetweenRetries
+    this.deviceDelayBetweenRetries = device.delayBetweenRetries ? (device.delayBetweenRetries * 1000) : this.platform.platformDelayBetweenRetries ?? 3000
+    const delayBetweenRetries = device.delayBetweenRetries ? 'Device' : this.platform.platformDelayBetweenRetries ? 'Platform' : 'Default'
+    this.debugLog(`Using ${delayBetweenRetries} Delay Between Retries: ${this.deviceDelayBetweenRetries}`)
+
+    // disablePushOn
+    this.deviceDisablePushOn = device.disablePushOn ?? false
+    const disablePushOn = device.disablePushOn ? 'Device Config' : 'Default'
+    // disablePushOff
+    this.deviceDisablePushOff = device.disablePushOff ?? false
+    const disablePushOff = device.disablePushOff ? 'Device Config' : 'Default'
+    // disablePushDetail
+    this.deviceDisablePushDetail = device.disablePushDetail ?? false
+    const disablePushDetail = device.disablePushDetail ? 'Device Config' : 'Default'
+    this.debugLog(`Using ${disablePushOn} Disable Push On: ${this.deviceDisablePushOn}, ${disablePushOff} Disable Push Off: ${this.deviceDisablePushOff}, ${disablePushDetail} Disable Push Detail: ${this.deviceDisablePushDetail}`)
   }
 
   async getDeviceConfigSettings(device: irdevice & irDevicesConfig): Promise<void> {
@@ -82,18 +108,30 @@ export abstract class irdeviceBase {
       device.disablePushOff === true && { disablePushOff: device.disablePushOff },
       device.disablePushDetail === true && { disablePushDetail: device.disablePushDetail },
     )
+    let deviceSpecificConfig = {}
+    switch (device.configRemoteType) {
+      case 'Fan':
+      case 'DIY Fan':
+        deviceSpecificConfig = device as irFanConfig
+        break
+      case 'Light':
+      case 'DIY Light':
+        deviceSpecificConfig = device as irLightConfig
+        break
+      case 'Air Conditioner':
+      case 'DIY Air Conditioner':
+        deviceSpecificConfig = device as irAirConfig
+        break
+      case 'Others':
+        deviceSpecificConfig = device as irOtherConfig
+        break
+      default:
+        break
+    }
     const config = Object.assign(
       {},
       deviceConfig,
-      device.irair,
-      device.irpur,
-      device.ircam,
-      device.irfan,
-      device.irlight,
-      device.other,
-      device.irtv,
-      device.irvc,
-      device.irwh,
+      deviceSpecificConfig,
     )
     if (Object.keys(config).length !== 0) {
       this.debugSuccessLog(`Config: ${JSON.stringify(config)}`)
@@ -108,7 +146,7 @@ export abstract class irdeviceBase {
 
     const deviceFirmwareVersion = device.firmware ?? accessory.context.version ?? this.platform.version ?? '0.0.0'
     const version = deviceFirmwareVersion.toString()
-    await this.debugLog(`version: ${version?.replace(/^V|-.*$/g, '')}`)
+    this.debugLog(`version: ${version?.replace(/^V|-.*$/g, '')}`)
     let deviceVersion: string
     if (version?.includes('.') === false) {
       const replace = version?.replace(/^V|-.*$/g, '')
@@ -129,16 +167,13 @@ export abstract class irdeviceBase {
     this.debugSuccessLog(`version: ${accessory.context.version}`)
   }
 
-  async pushChangeRequest(bodyChange: string): Promise<{ body: any, statusCode: any }> {
-    return await request(`${Devices}/${this.device.deviceId}/commands`, {
-      body: bodyChange,
-      method: 'POST',
-      headers: this.platform.generateHeaders(),
-    })
+  async pushChangeRequest(bodyChange: bodyChange): Promise<{ body: any, statusCode: number }> {
+    const { response, statusCode } = await this.platform.retryCommand(this.device, bodyChange, this.deviceMaxRetries, this.deviceDelayBetweenRetries)
+    return { body: response, statusCode }
   }
 
-  async successfulStatusCodes(statusCode: any, deviceStatus: any) {
-    return (statusCode === 200 || statusCode === 100) && (deviceStatus.statusCode === 200 || deviceStatus.statusCode === 100)
+  async successfulStatusCodes(deviceStatus: any) {
+    return (deviceStatus.statusCode === 200 || deviceStatus.statusCode === 100)
   }
 
   /**
@@ -153,53 +188,28 @@ export abstract class irdeviceBase {
    */
   async updateCharacteristic(Service: Service, Characteristic: any, CharacteristicValue: CharacteristicValue | undefined, CharacteristicName: string): Promise<void> {
     if (CharacteristicValue === undefined) {
-      await this.debugLog(`${CharacteristicName}: ${CharacteristicValue}`)
+      this.debugLog(`${CharacteristicName}: ${CharacteristicValue}`)
     } else {
       Service.updateCharacteristic(Characteristic, CharacteristicValue)
-      await this.debugLog(`updateCharacteristic ${CharacteristicName}: ${CharacteristicValue}`)
-      await this.debugWarnLog(`${CharacteristicName} context before: ${this.accessory.context[CharacteristicName]}`)
+      this.debugLog(`updateCharacteristic ${CharacteristicName}: ${CharacteristicValue}`)
+      this.debugWarnLog(`${CharacteristicName} context before: ${this.accessory.context[CharacteristicName]}`)
       this.accessory.context[CharacteristicName] = CharacteristicValue
-      await this.debugWarnLog(`${CharacteristicName} context after: ${this.accessory.context[CharacteristicName]}`)
+      this.debugWarnLog(`${CharacteristicName} context after: ${this.accessory.context[CharacteristicName]}`)
     }
   }
 
-  async pushStatusCodes(statusCode: any, deviceStatus: any) {
-    await this.debugWarnLog(`statusCode: ${statusCode}`)
-    await this.debugWarnLog(`deviceStatus: ${JSON.stringify(deviceStatus)}`)
-    await this.debugWarnLog(`deviceStatus statusCode: ${deviceStatus.statusCode}`)
+  async pushStatusCodes(deviceStatus: any) {
+    this.debugWarnLog(`deviceStatus: ${JSON.stringify(deviceStatus)}`)
+    this.debugWarnLog(`deviceStatus statusCode: ${deviceStatus.statusCode}`)
   }
 
-  async successfulPushChange(statusCode: any, deviceStatus: any, bodyChange: any) {
-    this.debugSuccessLog(`statusCode: ${statusCode} & deviceStatus StatusCode: ${deviceStatus.statusCode}`)
-    this.successLog(`request to SwitchBot API, body: ${JSON.stringify(JSON.parse(bodyChange))} sent successfully`)
+  async successfulPushChange(deviceStatus: any, bodyChange: any) {
+    this.debugSuccessLog(`deviceStatus StatusCode: ${deviceStatus.statusCode}`)
+    this.successLog(`request to SwitchBot API, body: ${JSON.stringify(bodyChange)} sent successfully`)
   }
 
   async pushChangeError(e: Error) {
     this.errorLog(`failed pushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
-  }
-
-  async disablePushOnChanges(device: irdevice & irDevicesConfig): Promise<void> {
-    if (device.disablePushOn === undefined) {
-      this.disablePushOn = false
-    } else {
-      this.disablePushOn = device.disablePushOn
-    }
-  }
-
-  async disablePushOffChanges(device: irdevice & irDevicesConfig): Promise<void> {
-    if (device.disablePushOff === undefined) {
-      this.disablePushOff = false
-    } else {
-      this.disablePushOff = device.disablePushOff
-    }
-  }
-
-  async disablePushDetailChanges(device: irdevice & irDevicesConfig): Promise<void> {
-    if (device.disablePushDetail === undefined) {
-      this.disablePushDetail = false
-    } else {
-      this.disablePushDetail = device.disablePushDetail
-    }
   }
 
   async commandType(): Promise<string> {

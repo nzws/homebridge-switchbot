@@ -3,13 +3,10 @@
  * blindtilt.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { blindTiltServiceData, blindTiltStatus, blindTiltWebhookContext, bodyChange, device, SwitchBotBLE, SwitchbotDevice, WoBlindTilt } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { devicesConfig } from '../settings.js'
-import type { blindTiltServiceData } from '../types/bledevicestatus.js'
-import type { device } from '../types/devicelist.js'
-import type { blindTiltStatus } from '../types/devicestatus.js'
-import type { blindTiltWebhookContext } from '../types/devicewebhookstatus.js'
+import type { blindTiltConfig, devicesConfig } from '../settings.js'
 
 /*
 * For Testing Locally:
@@ -88,7 +85,8 @@ export class BlindTilt extends deviceBase {
     accessory.category = this.hap.Categories.WINDOW_COVERING
 
     // default placeholders
-    this.mappingMode = (device.blindTilt?.mode as BlindTiltMappingMode) ?? BlindTiltMappingMode.OnlyUp
+
+    this.mappingMode = ((device as blindTiltConfig).mapping as BlindTiltMappingMode) ?? BlindTiltMappingMode.OnlyUp
     this.debugLog(`Mapping mode: ${this.mappingMode}`)
 
     // this is subject we use to track when we need to POST changes to the SwitchBot API
@@ -112,7 +110,7 @@ export class BlindTilt extends deviceBase {
 
     // Initialize WindowCovering Characteristics
     this.WindowCovering.Service.setCharacteristic(this.hap.Characteristic.Name, this.WindowCovering.Name).getCharacteristic(this.hap.Characteristic.TargetPosition).setProps({
-      minStep: device.blindTilt?.set_minStep ?? 1,
+      minStep: (device as blindTiltConfig).set_minStep ?? 1,
       minValue: 0,
       maxValue: 100,
       validValueRanges: [0, 100],
@@ -122,7 +120,7 @@ export class BlindTilt extends deviceBase {
 
     // Initialize WindowCovering CurrentPosition Characteristic
     this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.CurrentPosition).setProps({
-      minStep: device.blindTilt?.set_minStep ?? 1,
+      minStep: (device as blindTiltConfig).set_minStep ?? 1,
       minValue: 0,
       maxValue: 100,
       validValueRanges: [0, 100],
@@ -165,7 +163,7 @@ export class BlindTilt extends deviceBase {
     this.Battery.Service.setCharacteristic(this.hap.Characteristic.Name, this.Battery.Name).setCharacteristic(this.hap.Characteristic.ChargingState, this.hap.Characteristic.ChargingState.NOT_CHARGEABLE)
 
     // Initialize LightSensor Service
-    if (device.blindTilt?.hide_lightsensor) {
+    if ((device as blindTiltConfig).hide_lightsensor) {
       if (this.LightSensor?.Service) {
         this.debugLog('Removing Light Sensor Service')
         this.LightSensor.Service = accessory.getService(this.hap.Service.LightSensor) as Service
@@ -190,7 +188,7 @@ export class BlindTilt extends deviceBase {
     }
 
     // Initialize Open Mode Switch Service
-    if (!device.blindTilt?.silentModeSwitch) {
+    if (!(device as blindTiltConfig).silentModeSwitch) {
       if (this.OpenModeSwitch?.Service) {
         this.debugLog('Removing Open Mode Switch Service')
         this.OpenModeSwitch.Service = this.accessory.getService(this.hap.Service.Switch) as Service
@@ -215,7 +213,7 @@ export class BlindTilt extends deviceBase {
     }
 
     // Initialize Close Mode Switch Service
-    if (!device.blindTilt?.silentModeSwitch) {
+    if (!(device as blindTiltConfig).silentModeSwitch) {
       if (this.CloseModeSwitch?.Service) {
         this.debugLog('Removing Close Mode Switch Service')
         this.CloseModeSwitch.Service = this.accessory.getService(this.hap.Service.Switch) as Service
@@ -244,7 +242,7 @@ export class BlindTilt extends deviceBase {
       this.debugLog('Retrieve initial values and update Homekit')
       this.refreshStatus()
     } catch (e: any) {
-      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e}`)
+      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e.message ?? e}`)
     }
 
     // regisiter webhook event handler if enabled
@@ -252,7 +250,7 @@ export class BlindTilt extends deviceBase {
       this.debugLog('Registering Webhook Event Handler')
       this.registerWebhook()
     } catch (e: any) {
-      this.errorLog(`failed to registerWebhook, Error: ${e}`)
+      this.errorLog(`failed to registerWebhook, Error: ${e.message ?? e}`)
     }
 
     // regisiter platform BLE event handler if enabled
@@ -260,7 +258,7 @@ export class BlindTilt extends deviceBase {
       this.debugLog('Registering Platform BLE Event Handler')
       this.registerPlatformBLE()
     } catch (e: any) {
-      this.errorLog(`failed to registerPlatformBLE, Error: ${e}`)
+      this.errorLog(`failed to registerPlatformBLE, Error: ${e.message ?? e}`)
     }
 
     // Start an update interval
@@ -295,7 +293,7 @@ export class BlindTilt extends deviceBase {
           await this.pushChanges()
         } catch (e: any) {
           await this.apiError(e)
-          await this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+          this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
         }
         this.blindTiltUpdateInProgress = false
       })
@@ -305,96 +303,97 @@ export class BlindTilt extends deviceBase {
    * Parse the device status from the SwitchBotBLE API
    */
   async BLEparseStatus(): Promise<void> {
-    await this.debugLog('BLEparseStatus')
-    await this.debugLog(`(direction, slidePosition, battery, version) = BLE:(${this.serviceData.tilt}, ${this.serviceData.tilt}, ${this.serviceData.battery}, ${this.accessory.context.version}), current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
+    this.debugLog('BLEparseStatus')
+    this.debugLog(`(direction, slidePosition, battery, version) = BLE:(${this.serviceData.tilt}, ${this.serviceData.tilt}, ${this.serviceData.battery}, ${this.accessory.context.version}), current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
 
     // CurrentPosition
     this.WindowCovering.CurrentPosition = 100 - Number(this.serviceData.tilt)
     await this.setMinMax()
-    await this.debugLog(`CurrentPosition ${this.WindowCovering.CurrentPosition}`)
+    this.debugLog(`CurrentPosition ${this.WindowCovering.CurrentPosition}`)
     if (this.setNewTarget) {
-      await this.infoLog('Checking Status ...')
+      this.infoLog('Checking Status ...')
     }
     if (this.setNewTarget && this.serviceData.inMotion) {
       this.blindTiltMoving = true
       await this.setMinMax()
       if (Number(this.WindowCovering.TargetPosition) > this.WindowCovering.CurrentPosition) {
-        await this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.INCREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else if (Number(this.WindowCovering.TargetPosition) < this.WindowCovering.CurrentPosition) {
-        await this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.DECREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else {
-        await this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog('Stopped, PositionState', this.WindowCovering.PositionState)
+        this.debugLog('Stopped, PositionState', this.WindowCovering.PositionState)
       }
     } else {
       this.blindTiltMoving = false
-      await this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
       this.WindowCovering.TargetPosition = this.WindowCovering.CurrentPosition
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
-      await this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
+      this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
     }
-    await this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState}`)
+    this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState}`)
 
     // CurrentAmbientLightLevel
-    if (!this.device.blindTilt?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.blindTilt?.set_minLux ?? 1
-      const set_maxLux = this.device.blindTilt?.set_maxLux ?? 6001
+    if (!(this.device as blindTiltConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as blindTiltConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as blindTiltConfig).set_maxLux ?? 6001
       const spaceBetweenLevels = 9
 
-      await this.getLightLevel(this.serviceData.lightLevel, set_minLux, set_maxLux, spaceBetweenLevels)
-      await this.debugLog(`LightLevel: ${this.serviceData.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
+      this.getLightLevel(this.serviceData.lightLevel, set_minLux, set_maxLux, spaceBetweenLevels)
+      this.debugLog(`LightLevel: ${this.serviceData.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
     }
-
-    // BatteryLevel
-    this.Battery.BatteryLevel = this.serviceData.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
-
-    // StatusLowBattery
-    this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
-      ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
-      : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    // Battery Info
+    if ('battery' in this.serviceData) {
+      // BatteryLevel
+      this.Battery.BatteryLevel = this.serviceData.battery
+      this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+      // StatusLowBattery
+      this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
+        ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
+        : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
+      this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    }
   };
 
   /**
    * Parse the device status from the SwitchBot OpenAPI
    */
   async openAPIparseStatus(): Promise<void> {
-    await this.debugLog('openAPIparseStatus')
-    await this.debugLog(`(direction, slidePosition, battery, version) = OpenAPI:(${this.deviceStatus.direction}, ${this.deviceStatus.slidePosition}, ${this.deviceStatus.battery}, ${this.deviceStatus.version}), current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
+    this.debugLog('openAPIparseStatus')
+    this.debugLog(`(direction, slidePosition, battery, version) = OpenAPI:(${this.deviceStatus.direction}, ${this.deviceStatus.slidePosition}, ${this.deviceStatus.battery}, ${this.deviceStatus.version}), current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
 
     // CurrentPosition
     await this.getCurrentPosttionDirection(this.deviceStatus.direction, this.deviceStatus.slidePosition)
 
-    if (!this.device.blindTilt?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.blindTilt?.set_minLux ?? 1
-      const set_maxLux = this.device.blindTilt?.set_maxLux ?? 6001
+    if (!(this.device as blindTiltConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as blindTiltConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as blindTiltConfig).set_maxLux ?? 6001
       const lightLevel = this.deviceStatus.lightLevel === 'bright' ? set_maxLux : set_minLux
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(lightLevel, set_minLux, set_maxLux, 2)
-      await this.debugLog(`LightLevel: ${this.deviceStatus.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 2)
+      this.debugLog(`LightLevel: ${this.deviceStatus.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
     }
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.deviceStatus.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
 
     // Firmware Version
     const version = this.deviceStatus.version.toString()
-    await this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
+    this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
     let deviceVersion: string
     if (version?.includes('.') === false) {
       const replace = version?.replace(/^V|-.*$/g, '')
@@ -411,22 +410,22 @@ export class BlindTilt extends deviceBase {
       .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
       .updateValue(deviceVersion)
     this.accessory.context.version = deviceVersion
-    await this.debugLog(`version: ${this.accessory.context.version}`)
+    this.debugLog(`version: ${this.accessory.context.version}`)
   }
 
   async parseStatusWebhook(): Promise<void> {
-    await this.debugLog('parseStatusWebhook')
-    await this.debugLog(`(slidePosition, battery, version) = Webhook:(${this.webhookContext.direction}, ${this.webhookContext.slidePosition}, ${this.webhookContext.battery}, ${this.webhookContext.version}, current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
+    this.debugLog('parseStatusWebhook')
+    this.debugLog(`(slidePosition, battery, version) = Webhook:(${this.webhookContext.direction}, ${this.webhookContext.slidePosition}, ${this.webhookContext.battery}, ${this.webhookContext.version}, current:(${this.WindowCovering.CurrentHorizontalTiltAngle}, ${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
     // CurrentPosition and CurrentHorizontalTiltAngle
     await this.getCurrentPosttionDirection(this.webhookContext.direction, this.webhookContext.slidePosition)
     // BatteryLevel
     this.Battery.BatteryLevel = this.webhookContext.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
     // Firmware Version
     const deviceVersion = this.webhookContext.version.replace(/^V|-.*$/g, '') ?? '0.0.0'
     this.accessory
@@ -436,7 +435,7 @@ export class BlindTilt extends deviceBase {
       .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
       .updateValue(deviceVersion)
     this.accessory.context.version = deviceVersion
-    await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+    this.debugSuccessLog(`version: ${this.accessory.context.version}`)
   }
 
   /**
@@ -444,115 +443,128 @@ export class BlindTilt extends deviceBase {
    */
   async refreshStatus(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLERefreshStatus()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIRefreshStatus()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
     }
   }
 
   async BLERefreshStatus(): Promise<void> {
-    await this.debugLog('BLERefreshStatus')
-    const switchbot = await this.switchbotBLE()
-    if (switchbot === undefined) {
-      await this.BLERefreshConnection(switchbot)
+    this.debugLog('BLERefreshStatus')
+    const switchBotBLE = await this.switchbotBLE()
+    if (switchBotBLE === undefined) {
+      await this.BLERefreshConnection(switchBotBLE)
     } else {
       // Start to monitor advertisement packets
       (async () => {
         // Start to monitor advertisement packets
-        const serviceData = await this.monitorAdvertisementPackets(switchbot) as blindTiltServiceData
+        const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as blindTiltServiceData
         // Update HomeKit
         if (serviceData.model === SwitchBotBLEModel.BlindTilt && serviceData.modelName === SwitchBotBLEModelName.BlindTilt) {
           this.serviceData = serviceData
-          await this.BLEparseStatus()
-          await this.updateHomeKitCharacteristics()
+          if (serviceData !== undefined || serviceData !== null) {
+            await this.BLEparseStatus()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`serviceData is either undefined or null, serviceData: ${JSON.stringify(serviceData)}`)
+            await this.BLERefreshConnection(switchBotBLE)
+          }
         } else {
-          await this.errorLog(`failed to get serviceData, serviceData: ${serviceData}`)
-          await this.BLERefreshConnection(switchbot)
+          this.errorLog(`failed to get serviceData, serviceData: ${JSON.stringify(serviceData)}`)
+          await this.BLERefreshConnection(switchBotBLE)
         }
       })()
     }
   }
 
   async registerPlatformBLE(): Promise<void> {
-    await this.debugLog('registerPlatformBLE')
-    if (this.config.options?.BLE) {
-      await this.debugLog('is listening to Platform BLE.')
+    this.debugLog('registerPlatformBLE')
+    if (this.config.options?.BLE && !this.device.disablePlatformBLE) {
+      this.debugLog('is listening to Platform BLE.')
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         this.platform.bleEventHandler[this.device.bleMac] = async (context: blindTiltServiceData) => {
           try {
-            await this.debugLog(`received BLE: ${JSON.stringify(context)}`)
             this.serviceData = context
-            await this.BLEparseStatus()
-            await this.updateHomeKitCharacteristics()
+            if (context !== undefined || context !== null) {
+              this.debugLog(`received BLE: ${JSON.stringify(context)}`)
+              await this.BLEparseStatus()
+              await this.updateHomeKitCharacteristics()
+            } else {
+              this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+              await this.BLERefreshConnection(context)
+            }
           } catch (e: any) {
-            await this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e}`)
+            this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
           }
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog('is not listening to Platform BLE')
+      this.debugLog('is not listening to Platform BLE')
     }
   }
 
   async openAPIRefreshStatus(): Promise<void> {
-    await this.debugLog('openAPIRefreshStatus')
+    this.debugLog('openAPIRefreshStatus')
     try {
-      const { body, statusCode } = await this.deviceRefreshStatus()
-      const deviceStatus: any = await body.json()
-      await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-      if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-        await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      const response = await this.deviceRefreshStatus()
+      const deviceStatus: any = response.body
+      this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      if (await this.successfulStatusCodes(deviceStatus)) {
+        this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
         this.deviceStatus = deviceStatus.body
         await this.openAPIparseStatus()
         await this.updateHomeKitCharacteristics()
       } else {
-        await this.debugWarnLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        await this.debugWarnLog(statusCode, deviceStatus)
+        this.debugWarnLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
       }
     } catch (e: any) {
       await this.apiError(e)
-      await this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+      this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
     }
   }
 
   async registerWebhook(): Promise<void> {
     if (this.device.webhook) {
-      await this.debugLog('is listening webhook.')
+      this.debugLog('is listening webhook.')
       this.platform.webhookEventHandler[this.device.deviceId] = async (context: blindTiltWebhookContext) => {
         try {
-          await this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
           this.webhookContext = context
-          await this.parseStatusWebhook()
-          await this.updateHomeKitCharacteristics()
+          if (context !== undefined || context !== null) {
+            this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
+            await this.parseStatusWebhook()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+          }
         } catch (e: any) {
-          await this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e}`)
+          this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
         }
       }
     } else {
-      await this.debugLog('is not listening webhook.')
+      this.debugLog('is not listening webhook.')
     }
   }
 
   async pushChanges(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLEpushChanges()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIpushChanges()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
     }
     // Refresh the status from the API
     interval(15000)
@@ -564,98 +576,98 @@ export class BlindTilt extends deviceBase {
   }
 
   async BLEpushChanges(): Promise<void> {
-    await this.debugLog('BLEpushChanges')
+    this.debugLog('BLEpushChanges')
     if (this.WindowCovering.TargetPosition !== this.WindowCovering.CurrentPosition) {
-      await this.debugLog(`BLEpushChanges On: ${this.WindowCovering.TargetPosition} OnCached: ${this.WindowCovering.CurrentPosition}`)
-      const switchbot = await this.platform.connectBLE(this.accessory, this.device)
+      this.debugLog(`BLEpushChanges On: ${this.WindowCovering.TargetPosition} OnCached: ${this.WindowCovering.CurrentPosition}`)
+      const switchBotBLE = await this.platform.connectBLE(this.accessory, this.device)
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         const { setPositionMode, Mode }: { setPositionMode: number, Mode: string } = await this.setPerformance()
-        await this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
-        if (switchbot !== false) {
-          switchbot
+        this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
+        if (switchBotBLE !== false) {
+          switchBotBLE
             .discover({ model: this.device.bleModel, quick: true, id: this.device.bleMac })
-            .then(async (device_list: any) => {
+            .then(async (device_list: SwitchbotDevice[]) => {
+              const deviceList = device_list as WoBlindTilt[]
               return await this.retryBLE({
-                max: await this.maxRetryBLE(),
+                max: this.maxRetryBLE(),
                 fn: async () => {
-                  return await device_list[0].runToPos(100 - Number(this.WindowCovering.TargetPosition), setPositionMode)
+                  return await deviceList[0].runToPos(100 - Number(this.WindowCovering.TargetPosition), setPositionMode)
                 },
               })
             })
             .then(async () => {
-              await this.successLog(`TargetPostion: ${this.WindowCovering.TargetPosition} sent over SwitchBot BLE,  sent successfully`)
+              this.successLog(`TargetPostion: ${this.WindowCovering.TargetPosition} sent over SwitchBot BLE, sent successfully`)
               await this.updateHomeKitCharacteristics()
             })
             .catch(async (e: any) => {
               await this.apiError(e)
-              await this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+              this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
               await this.BLEPushConnection()
             })
         } else {
-          await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+          this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${JSON.stringify(switchBotBLE)}`)
           await this.BLEPushConnection()
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog(`No changes (BLEpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`No changes (BLEpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     }
   }
 
   async openAPIpushChanges(): Promise<void> {
-    await this.debugLog('openAPIpushChanges')
+    this.debugLog('openAPIpushChanges')
     const hasDifferentAndRelevantHorizontalTiltAngle
       = this.mappingMode === BlindTiltMappingMode.UseTiltForDirection
-      && this.WindowCovering.TargetHorizontalTiltAngle !== this.WindowCovering.CurrentHorizontalTiltAngle
+        && this.WindowCovering.TargetHorizontalTiltAngle !== this.WindowCovering.CurrentHorizontalTiltAngle
     if (this.WindowCovering.TargetPosition !== this.WindowCovering.CurrentPosition
       || hasDifferentAndRelevantHorizontalTiltAngle || this.device.disableCaching) {
       const [direction, position] = this.mapHomekitValuesToDeviceValues(Number(this.WindowCovering.TargetPosition), Number(this.WindowCovering.TargetHorizontalTiltAngle))
       const { Mode, setPositionMode }: { setPositionMode: number, Mode: string } = await this.setPerformance()
-      await this.debugLog(`Pushing ${this.WindowCovering.TargetPosition} (device = ${direction};${position})`)
-      await this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
-      let bodyChange: string
+      this.debugLog(`Pushing ${this.WindowCovering.TargetPosition} (device = ${direction};${position})`)
+      this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
+      let bodyChange: bodyChange
       if (position === 100) {
-        bodyChange = JSON.stringify({
+        bodyChange = {
           command: 'fullyOpen',
           parameter: 'default',
           commandType: 'command',
-        })
+        }
       } else if (position === 0) {
-        bodyChange = JSON.stringify({
+        bodyChange = {
           command: direction === 'up' ? 'closeUp' : 'closeDown',
           parameter: 'default',
           commandType: 'command',
-        })
+        }
       } else {
-        bodyChange = JSON.stringify({
+        bodyChange = {
           command: 'setPosition',
           parameter: `${direction};${position}`,
           commandType: 'command',
-        })
+        }
       }
-      await this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
+      this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
         await this.apiError(e)
-        await this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+        this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
       }
     } else {
-      await this.debugLog(`No changes (openAPIpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
-      await this.debugLog(`No changes (openAPIpushChanges), TargetHorizontalTiltAngle: ${this.WindowCovering.TargetHorizontalTiltAngle}, CurrentHorizontalTiltAngle: ${this.WindowCovering.CurrentHorizontalTiltAngle}`)
+      this.debugLog(`No changes (openAPIpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`No changes (openAPIpushChanges), TargetHorizontalTiltAngle: ${this.WindowCovering.TargetHorizontalTiltAngle}, CurrentHorizontalTiltAngle: ${this.WindowCovering.CurrentHorizontalTiltAngle}`)
     }
   }
 
@@ -664,9 +676,9 @@ export class BlindTilt extends deviceBase {
    */
   async TargetHorizontalTiltAngleSet(value: CharacteristicValue): Promise<void> {
     if (this.WindowCovering.TargetHorizontalTiltAngle !== this.accessory.context.TargetHorizontalTiltAngle) {
-      await this.debugLog(`Set TargetHorizontalTiltAngle: ${value}`)
+      this.debugLog(`Set TargetHorizontalTiltAngle: ${value}`)
     } else {
-      await this.debugLog(`No changes, TargetHorizontalTiltAngle: ${value}`)
+      this.debugLog(`No changes, TargetHorizontalTiltAngle: ${value}`)
     }
 
     // value = value < 0 ? -90 : 90;
@@ -680,9 +692,9 @@ export class BlindTilt extends deviceBase {
    */
   async TargetPositionSet(value: CharacteristicValue): Promise<void> {
     if (this.WindowCovering.TargetPosition !== this.accessory.context.TargetPosition) {
-      await this.debugLog(`Set TargetPosition: ${value}`)
+      this.debugLog(`Set TargetPosition: ${value}`)
     } else {
-      await this.debugLog(`No changes, TargetPosition: ${value}`)
+      this.debugLog(`No changes, TargetPosition: ${value}`)
     }
 
     this.WindowCovering.TargetPosition = value
@@ -692,20 +704,20 @@ export class BlindTilt extends deviceBase {
 
   async startUpdatingBlindTiltIfNeeded(): Promise<void> {
     await this.setMinMax()
-    await this.debugLog('setMinMax')
+    this.debugLog('setMinMax')
     if (this.WindowCovering.TargetPosition > this.WindowCovering.CurrentPosition
       || this.WindowCovering.TargetHorizontalTiltAngle !== this.WindowCovering.CurrentHorizontalTiltAngle) {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.INCREASING
       this.setNewTarget = true
-      await this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     } else if (this.WindowCovering.TargetPosition < this.WindowCovering.CurrentPosition) {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.DECREASING
       this.setNewTarget = true
-      await this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     } else {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
       this.setNewTarget = false
-      await this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.CurrentPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     }
     this.WindowCovering.Service.setCharacteristic(this.hap.Characteristic.PositionState, this.WindowCovering.PositionState)
     this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
@@ -715,10 +727,10 @@ export class BlindTilt extends deviceBase {
      * The minimum time depends on the network control latency.
      */
     clearTimeout(this.setNewTargetTimer)
-    await this.debugLog(`deviceUpdateRate: ${this.deviceUpdateRate}`)
+    this.debugLog(`deviceUpdateRate: ${this.deviceUpdateRate}`)
     if (this.setNewTarget) {
       this.setNewTargetTimer = setTimeout(async () => {
-        await this.debugLog(`setNewTarget ${this.setNewTarget} timeout`)
+        this.debugLog(`setNewTarget ${this.setNewTarget} timeout`)
         this.setNewTarget = false
       }, this.deviceUpdateRate * 1000)
     }
@@ -729,7 +741,7 @@ export class BlindTilt extends deviceBase {
    * Handle requests to set the value of the "Target Position" characteristic
    */
   async OpenModeSwitchSet(value: CharacteristicValue): Promise<void> {
-    if (this.OpenModeSwitch && this.device.blindTilt?.silentModeSwitch) {
+    if (this.OpenModeSwitch && (this.device as blindTiltConfig).silentModeSwitch) {
       this.debugLog(`Silent Open Mode: ${value}`)
       this.OpenModeSwitch.On = value
       this.accessory.context.OpenModeSwitch.On = value
@@ -741,7 +753,7 @@ export class BlindTilt extends deviceBase {
    * Handle requests to set the value of the "Target Position" characteristic
    */
   async CloseModeSwitchSet(value: CharacteristicValue): Promise<void> {
-    if (this.CloseModeSwitch && this.device.blindTilt?.silentModeSwitch) {
+    if (this.CloseModeSwitch && (this.device as blindTiltConfig).silentModeSwitch) {
       this.debugLog(`Silent Close Mode: ${value}`)
       this.CloseModeSwitch.On = value
       this.accessory.context.CloseModeSwitch.On = value
@@ -762,7 +774,7 @@ export class BlindTilt extends deviceBase {
     // TargetPosition
     await this.updateCharacteristic(this.WindowCovering.Service, this.hap.Characteristic.TargetPosition, this.WindowCovering.TargetPosition, 'TargetPosition')
     // CurrentAmbientLightLevel
-    if (!this.device.blindTilt?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as blindTiltConfig).hide_lightsensor && this.LightSensor?.Service) {
       const history = { time: Math.round(new Date().valueOf() / 1000), lux: this.LightSensor.CurrentAmbientLightLevel }
       await this.updateCharacteristic(this.LightSensor?.Service, this.hap.Characteristic.CurrentAmbientLightLevel, this.LightSensor?.CurrentAmbientLightLevel, 'CurrentAmbientLightLevel', history)
     }
@@ -776,15 +788,15 @@ export class BlindTilt extends deviceBase {
 
   async BLEPushConnection() {
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Push Changes')
+      this.warnLog('Using OpenAPI Connection to Push Changes')
       await this.openAPIpushChanges()
     }
   }
 
-  async BLERefreshConnection(switchbot: any): Promise<void> {
-    await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+  async BLERefreshConnection(switchbot: SwitchBotBLE): Promise<void> {
+    this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Refresh Status')
+      this.warnLog('Using OpenAPI Connection to Refresh Status')
       await this.openAPIRefreshStatus()
     }
   }
@@ -793,10 +805,10 @@ export class BlindTilt extends deviceBase {
     let setPositionMode: number
     let Mode: string
     if (Number(this.WindowCovering.TargetPosition) > 50) {
-      if (this.device.blindTilt?.setOpenMode === '1' || this.OpenModeSwitch?.On) {
+      if ((this.device as blindTiltConfig).setOpenMode === '1' || this.OpenModeSwitch?.On) {
         setPositionMode = 1
         Mode = 'Silent Mode'
-      } else if (this.device.blindTilt?.setOpenMode === '0' || !this.OpenModeSwitch?.On) {
+      } else if ((this.device as blindTiltConfig).setOpenMode === '0' || !this.OpenModeSwitch?.On) {
         setPositionMode = 0
         Mode = 'Performance Mode'
       } else {
@@ -804,10 +816,10 @@ export class BlindTilt extends deviceBase {
         Mode = 'Default Mode'
       }
     } else {
-      if (this.device.blindTilt?.setCloseMode === '1' || this.CloseModeSwitch?.On) {
+      if ((this.device as blindTiltConfig).setCloseMode === '1' || this.CloseModeSwitch?.On) {
         setPositionMode = 1
         Mode = 'Silent Mode'
-      } else if (this.device.blindTilt?.setOpenMode === '0' || !this.CloseModeSwitch?.On) {
+      } else if ((this.device as blindTiltConfig).setOpenMode === '0' || !this.CloseModeSwitch?.On) {
         setPositionMode = 0
         Mode = 'Performance Mode'
       } else {
@@ -819,13 +831,13 @@ export class BlindTilt extends deviceBase {
   }
 
   async setMinMax(): Promise<void> {
-    if (this.device.blindTilt?.set_min) {
-      if (Number(this.WindowCovering.CurrentPosition) <= this.device.blindTilt?.set_min) {
+    if ((this.device as blindTiltConfig).set_min) {
+      if (Number(this.WindowCovering.CurrentPosition) <= (this.device as blindTiltConfig).set_min!) {
         this.WindowCovering.CurrentPosition = 0
       }
     }
-    if (this.device.blindTilt?.set_max) {
-      if (Number(this.WindowCovering.CurrentPosition) >= this.device.blindTilt?.set_max) {
+    if ((this.device as blindTiltConfig).set_max) {
+      if (Number(this.WindowCovering.CurrentPosition) >= (this.device as blindTiltConfig).set_max!) {
         this.WindowCovering.CurrentPosition = 100
       }
     }
@@ -859,7 +871,7 @@ export class BlindTilt extends deviceBase {
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.BatteryLevel, e)
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.StatusLowBattery, e)
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.ChargingState, e)
-    if (!this.device.blindTilt?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as blindTiltConfig).hide_lightsensor && this.LightSensor?.Service) {
       this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentAmbientLightLevel, e)
       this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.StatusActive, e)
     }
@@ -870,50 +882,50 @@ export class BlindTilt extends deviceBase {
     slidePosition: blindTiltStatus['slidePosition'] | blindTiltWebhookContext['slidePosition'],
   ) {
     const [homekitPosition, homekitTiltAngle] = this.mapDeviceValuesToHomekitValues(Number(slidePosition), String(direction))
-    await this.debugLog(`Slide Position: ${slidePosition}`)
-    await this.debugLog(`Homekit Position: ${homekitPosition}`)
+    this.debugLog(`Slide Position: ${slidePosition}`)
+    this.debugLog(`Homekit Position: ${homekitPosition}`)
 
     this.WindowCovering.CurrentPosition = homekitPosition
     await this.setMinMax()
-    await this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+    this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
 
     if (homekitTiltAngle) {
       this.WindowCovering.CurrentHorizontalTiltAngle = homekitTiltAngle!
-      await this.debugLog(`CurrentHorizontalTiltAngle: ${this.WindowCovering.CurrentHorizontalTiltAngle}`)
+      this.debugLog(`CurrentHorizontalTiltAngle: ${this.WindowCovering.CurrentHorizontalTiltAngle}`)
     }
 
     if (this.setNewTarget) {
       this.blindTiltMoving = true
-      await this.infoLog('Checking Status ...')
+      this.infoLog('Checking Status ...')
       await this.setMinMax()
       if (this.WindowCovering.TargetPosition > this.WindowCovering.CurrentPosition
         || (homekitTiltAngle && this.WindowCovering.TargetHorizontalTiltAngle !== this.WindowCovering.CurrentHorizontalTiltAngle)) {
-        await this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.INCREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else if (this.WindowCovering.TargetPosition < this.WindowCovering.CurrentPosition) {
-        await this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.DECREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else {
-        await this.debugLog(`Standby because reached position, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Standby because reached position, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
       }
     } else {
       this.blindTiltMoving = false
-      await this.debugLog(`Standby because device not moving, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`Standby because device not moving, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
       this.WindowCovering.TargetPosition = this.WindowCovering.CurrentPosition
       if (homekitTiltAngle) {
         this.WindowCovering.TargetHorizontalTiltAngle = this.WindowCovering.CurrentHorizontalTiltAngle
       }
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
-      await this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
+      this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
     }
-    await this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState}`)
+    this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState}`)
   }
 
   /**

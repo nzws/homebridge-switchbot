@@ -3,13 +3,10 @@
  * hub.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { device, hub2ServiceData, hub3ServiceData, hub2Status, hub2WebhookContext, SwitchBotBLE } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { devicesConfig } from '../settings.js'
-import type { hub2ServiceData } from '../types/bledevicestatus.js'
-import type { device } from '../types/devicelist.js'
-import type { hub2Status } from '../types/devicestatus.js'
-import type { hub2WebhookContext } from '../types/devicewebhookstatus.js'
+import type { devicesConfig, hubConfig } from '../settings.js'
 
 import { Units } from 'homebridge'
 /*
@@ -49,7 +46,7 @@ export class Hub extends deviceBase {
   webhookContext!: hub2WebhookContext
 
   // BLE
-  serviceData!: hub2ServiceData
+  serviceData!: hub2ServiceData | hub3ServiceData
 
   // Updates
   hubUpdateInProgress!: boolean
@@ -69,7 +66,7 @@ export class Hub extends deviceBase {
     this.hubUpdateInProgress = false
 
     // Initialize Temperature Sensor Service
-    if (device.hub?.hide_temperature) {
+    if ((device as hubConfig).hide_temperature) {
       if (this.TemperatureSensor) {
         this.debugLog('Removing Temperature Sensor Service')
         this.TemperatureSensor.Service = this.accessory.getService(this.hap.Service.TemperatureSensor) as Service
@@ -97,7 +94,7 @@ export class Hub extends deviceBase {
     }
 
     // Initialize Humidity Sensor Service
-    if (device.hub?.hide_humidity) {
+    if ((device as hubConfig).hide_humidity) {
       if (this.HumiditySensor) {
         this.debugLog('Removing Humidity Sensor Service')
         this.HumiditySensor.Service = this.accessory.getService(this.hap.Service.HumiditySensor) as Service
@@ -121,7 +118,7 @@ export class Hub extends deviceBase {
     }
 
     // Initialize Light Sensor Service
-    if (device.hub?.hide_lightsensor) {
+    if ((device as hubConfig).hide_lightsensor) {
       if (this.LightSensor) {
         this.debugLog('Removing Light Sensor Service')
         this.LightSensor.Service = this.accessory.getService(this.hap.Service.LightSensor) as Service
@@ -149,7 +146,7 @@ export class Hub extends deviceBase {
       this.debugLog('Retrieve initial values and update Homekit')
       this.refreshStatus()
     } catch (e: any) {
-      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e}`)
+      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e.message ?? e}`)
     }
 
     // regisiter webhook event handler if enabled
@@ -157,7 +154,7 @@ export class Hub extends deviceBase {
       this.debugLog('Registering Webhook Event Handler')
       this.registerWebhook()
     } catch (e: any) {
-      this.errorLog(`failed to registerWebhook, Error: ${e}`)
+      this.errorLog(`failed to registerWebhook, Error: ${e.message ?? e}`)
     }
 
     // regisiter platform BLE event handler if enabled
@@ -165,7 +162,7 @@ export class Hub extends deviceBase {
       this.debugLog('Registering Platform BLE Event Handler')
       this.registerPlatformBLE()
     } catch (e: any) {
-      this.errorLog(`failed to registerPlatformBLE, Error: ${e}`)
+      this.errorLog(`failed to registerPlatformBLE, Error: ${e.message ?? e}`)
     }
 
     // Start an update interval
@@ -177,60 +174,60 @@ export class Hub extends deviceBase {
   }
 
   async BLEparseStatus(): Promise<void> {
-    await this.debugLog('BLEparseStatus')
-    await this.debugLog(`(temperature, humidity, lightLevel) = BLE:(${this.serviceData.celsius}, ${this.serviceData.humidity}, ${this.serviceData.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
+    this.debugLog('BLEparseStatus')
+    this.debugLog(`(temperature, humidity, lightLevel) = BLE:(${this.serviceData.celsius}, ${this.serviceData.humidity}, ${this.serviceData.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
 
     // CurrentTemperature
-    if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
       this.TemperatureSensor.CurrentTemperature = this.serviceData.celsius
-      await this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
+      this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
 
     // CurrentRelativeHumidity
-    if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor!.CurrentRelativeHumidity = validHumidity(this.serviceData.humidity, 0, 100)
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
     }
 
     // CurrentAmbientLightLevel
-    if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.blindTilt?.set_minLux ?? 1
-      const set_maxLux = this.device.blindTilt?.set_maxLux ?? 6001
+    if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as hubConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as hubConfig).set_maxLux ?? 6001
       const lightLevel = this.serviceData.lightLevel
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
-      await this.debugLog(`LightLevel: ${this.serviceData.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
+      this.debugLog(`LightLevel: ${this.serviceData.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
     }
   }
 
   async openAPIparseStatus(): Promise<void> {
-    await this.debugLog('openAPIparseStatus')
-    await this.debugLog(`(temperature, humidity, lightLevel) = OpenAPI:(${this.deviceStatus.temperature}, ${this.deviceStatus.humidity}, ${this.deviceStatus.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
+    this.debugLog('openAPIparseStatus')
+    this.debugLog(`(temperature, humidity, lightLevel) = OpenAPI:(${this.deviceStatus.temperature}, ${this.deviceStatus.humidity}, ${this.deviceStatus.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
 
     // CurrentRelativeHumidity
-    if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.CurrentRelativeHumidity = this.deviceStatus.humidity
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
     }
 
     // CurrentTemperature
-    if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
       this.TemperatureSensor.CurrentTemperature = this.deviceStatus.temperature
-      await this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
+      this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
 
     // LightSensor
-    if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.blindTilt?.set_minLux ?? 1
-      const set_maxLux = this.device.blindTilt?.set_maxLux ?? 6001
+    if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as hubConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as hubConfig).set_maxLux ?? 6001
       const lightLevel = this.deviceStatus.lightLevel
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
-      await this.debugLog(`LightLevel: ${this.deviceStatus.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
+      this.debugLog(`LightLevel: ${this.deviceStatus.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
     }
 
     // Firmware Version
     if (this.deviceStatus.version) {
       const version = this.deviceStatus.version.toString()
-      await this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
+      this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
       const deviceVersion = version.replace(/^V|-.*$/g, '') ?? '0.0.0'
       this.accessory
         .getService(this.hap.Service.AccessoryInformation)!
@@ -239,36 +236,36 @@ export class Hub extends deviceBase {
         .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
         .updateValue(deviceVersion)
       this.accessory.context.version = deviceVersion
-      await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+      this.debugSuccessLog(`version: ${this.accessory.context.version}`)
     }
   }
 
   async parseStatusWebhook(): Promise<void> {
-    await this.debugLog('parseStatusWebhook')
-    await this.debugLog(`(scale, temperature, humidity, lightLevel) = Webhook:(${this.webhookContext.scale}, ${convertUnits(this.webhookContext.temperature, this.webhookContext.scale, this.device.hub?.convertUnitTo)}, ${this.webhookContext.humidity}, ${this.webhookContext.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
+    this.debugLog('parseStatusWebhook')
+    this.debugLog(`(scale, temperature, humidity, lightLevel) = Webhook:(${this.webhookContext.scale}, ${convertUnits(this.webhookContext.temperature, this.webhookContext.scale, (this.device as hubConfig).convertUnitTo)}, ${this.webhookContext.humidity}, ${this.webhookContext.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
     // Check if the scale is not CELSIUS
-    if (this.webhookContext.scale !== 'CELSIUS' && this.device.hub?.convertUnitTo === undefined) {
-      await this.warnLog(`received a non-CELSIUS Webhook scale: ${this.webhookContext.scale}, Use the *convertUnitsTo* config under Hub settings, if displaying incorrectly in HomeKit.`)
+    if (this.webhookContext.scale !== 'CELSIUS' && (this.device as hubConfig).convertUnitTo === undefined) {
+      this.warnLog(`received a non-CELSIUS Webhook scale: ${this.webhookContext.scale}, Use the *convertUnitsTo* config under Hub settings, if displaying incorrectly in HomeKit.`)
     }
 
     // CurrentRelativeHumidity
-    if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.CurrentRelativeHumidity = this.webhookContext.humidity
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}`)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}`)
     }
 
     // CurrentTemperature
-    if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
-      this.TemperatureSensor.CurrentTemperature = convertUnits(this.webhookContext.temperature, this.webhookContext.scale, this.device.hub?.convertUnitTo)
-      await this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}`)
+    if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
+      this.TemperatureSensor.CurrentTemperature = convertUnits(this.webhookContext.temperature, this.webhookContext.scale, (this.device as hubConfig).convertUnitTo)
+      this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}`)
     }
 
     // CurrentAmbientLightLevel
-    if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.blindTilt?.set_minLux ?? 1
-      const set_maxLux = this.device.blindTilt?.set_maxLux ?? 6001
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(this.webhookContext.lightLevel, set_minLux, set_maxLux, 19)
-      await this.debugLog(`CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
+    if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as hubConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as hubConfig).set_maxLux ?? 6001
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(this.webhookContext.lightLevel, set_minLux, set_maxLux, 19)
+      this.debugLog(`CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
     }
   }
 
@@ -277,102 +274,116 @@ export class Hub extends deviceBase {
    */
   async refreshStatus(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLERefreshStatus()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIRefreshStatus()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
     }
   }
 
   async BLERefreshStatus(): Promise<void> {
-    await this.debugLog('BLERefreshStatus')
-    const switchbot = await this.switchbotBLE()
-    if (switchbot === undefined) {
-      await this.BLERefreshConnection(switchbot)
+    this.debugLog('BLERefreshStatus')
+    const switchBotBLE = await this.switchbotBLE()
+    if (switchBotBLE === undefined) {
+      await this.BLERefreshConnection(switchBotBLE)
     } else {
       // Start to monitor advertisement packets
       (async () => {
         // Start to monitor advertisement packets
-        const serviceData = await this.monitorAdvertisementPackets(switchbot) as hub2ServiceData
+        const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as hub2ServiceData | hub3ServiceData
         // Update HomeKit
-        if (serviceData.model === SwitchBotBLEModel.Hub2 && serviceData.modelName === SwitchBotBLEModelName.Hub2) {
+        if ((serviceData.model === SwitchBotBLEModel.Hub2 && serviceData.modelName === SwitchBotBLEModelName.Hub2) || 
+            (serviceData.model === SwitchBotBLEModel.Hub3 && serviceData.modelName === SwitchBotBLEModelName.Hub3)) {
           this.serviceData = serviceData
-          await this.BLEparseStatus()
-          await this.updateHomeKitCharacteristics()
+          if (serviceData !== undefined || serviceData !== null) {
+            await this.BLEparseStatus()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`serviceData is either undefined or null, serviceData: ${JSON.stringify(serviceData)}`)
+            await this.BLERefreshConnection(switchBotBLE)
+          }
         } else {
-          await this.errorLog(`failed to get serviceData, serviceData: ${serviceData}`)
-          await this.BLERefreshConnection(switchbot)
+          this.errorLog(`failed to get serviceData, serviceData: ${JSON.stringify(serviceData)}`)
+          await this.BLERefreshConnection(switchBotBLE)
         }
       })()
     }
   }
 
   async registerPlatformBLE(): Promise<void> {
-    await this.debugLog('registerPlatformBLE')
-    if (this.config.options?.BLE) {
-      await this.debugLog('is listening to Platform BLE.')
+    this.debugLog('registerPlatformBLE')
+    if (this.config.options?.BLE && !this.device.disablePlatformBLE) {
+      this.debugLog('is listening to Platform BLE.')
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         this.platform.bleEventHandler[this.device.bleMac] = async (context: hub2ServiceData) => {
           try {
-            await this.debugLog(`received BLE: ${JSON.stringify(context)}`)
             this.serviceData = context
-            await this.BLEparseStatus()
-            await this.updateHomeKitCharacteristics()
+            if (context !== undefined || context !== null) {
+              this.debugLog(`received BLE: ${JSON.stringify(context)}`)
+              await this.BLEparseStatus()
+              await this.updateHomeKitCharacteristics()
+            } else {
+              this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+              await this.BLERefreshConnection(context)
+            }
           } catch (e: any) {
-            await this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e}`)
+            this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
           }
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog('is not listening to Platform BLE')
+      this.debugLog('is not listening to Platform BLE')
     }
   }
 
   async openAPIRefreshStatus(): Promise<void> {
-    await this.debugLog('openAPIRefreshStatus')
+    this.debugLog('openAPIRefreshStatus')
     try {
-      const { body, statusCode } = await this.deviceRefreshStatus()
-      const deviceStatus: any = await body.json()
-      await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-      if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-        await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      const response = await this.deviceRefreshStatus()
+      const deviceStatus: any = response.body
+      this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      if (await this.successfulStatusCodes(deviceStatus)) {
+        this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
         this.deviceStatus = deviceStatus.body
         await this.openAPIparseStatus()
         await this.updateHomeKitCharacteristics()
       } else {
-        await this.debugWarnLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        await this.debugWarnLog(statusCode, deviceStatus)
+        this.debugWarnLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
       }
     } catch (e: any) {
       await this.apiError(e)
-      await this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+      this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
     }
   }
 
   async registerWebhook(): Promise<void> {
     if (this.device.webhook) {
-      await this.debugLog('is listening webhook.')
+      this.debugLog('is listening webhook.')
       this.platform.webhookEventHandler[this.device.deviceId] = async (context: hub2WebhookContext) => {
         try {
-          await this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
           this.webhookContext = context
-          await this.parseStatusWebhook()
-          await this.updateHomeKitCharacteristics()
+          if (context !== undefined || context !== null) {
+            this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
+            await this.parseStatusWebhook()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+          }
         } catch (e: any) {
-          await this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e}`)
+          this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
         }
       }
     } else {
-      await this.debugLog('is not listening webhook.')
+      this.debugLog('is not listening webhook.')
     }
   }
 
@@ -382,49 +393,49 @@ export class Hub extends deviceBase {
 
   async updateHomeKitCharacteristics(): Promise<void> {
     // CurrentRelativeHumidity
-    if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
       await this.updateCharacteristic(this.HumiditySensor.Service, this.hap.Characteristic.CurrentRelativeHumidity, this.HumiditySensor.CurrentRelativeHumidity, 'CurrentRelativeHumidity')
     }
     // CurrentTemperature
-    if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
       await this.updateCharacteristic(this.TemperatureSensor.Service, this.hap.Characteristic.CurrentTemperature, this.TemperatureSensor.CurrentTemperature, 'CurrentTemperature')
     }
     // CurrentAmbientLightLevel
-    if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
       await this.updateCharacteristic(this.LightSensor.Service, this.hap.Characteristic.CurrentAmbientLightLevel, this.LightSensor.CurrentAmbientLightLevel, 'CurrentAmbientLightLevel')
     }
   }
 
-  async BLERefreshConnection(switchbot: any): Promise<void> {
-    await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+  async BLERefreshConnection(switchbot: SwitchBotBLE): Promise<void> {
+    this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Refresh Status')
+      this.warnLog('Using OpenAPI Connection to Refresh Status')
       await this.openAPIRefreshStatus()
     }
   }
 
   async offlineOff(): Promise<void> {
     if (this.device.offline) {
-      if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
+      if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
         this.TemperatureSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentTemperature, this.accessory.context.CurrentTemperature)
       }
-      if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+      if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
         this.HumiditySensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentRelativeHumidity, this.accessory.context.CurrentRelativeHumidity)
       }
-      if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
+      if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
         this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentAmbientLightLevel, this.accessory.context.CurrentAmbientLightLevel)
       }
     }
   }
 
   async apiError(e: any): Promise<void> {
-    if (!this.device.hub?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
       this.TemperatureSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentTemperature, e)
     }
-    if (!this.device.hub?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentRelativeHumidity, e)
     }
-    if (!this.device.hub?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
       this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentAmbientLightLevel, e)
     }
   }

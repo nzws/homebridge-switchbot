@@ -3,13 +3,10 @@
  * iosensor.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { device, outdoorMeterServiceData, outdoorMeterStatus, outdoorMeterWebhookContext, SwitchBotBLE } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { devicesConfig } from '../settings.js'
-import type { outdoorMeterServiceData } from '../types/bledevicestatus.js'
-import type { device } from '../types/devicelist.js'
-import type { outdoorMeterStatus } from '../types/devicestatus.js'
-import type { outdoorMeterWebhookContext } from '../types/devicewebhookstatus.js'
+import type { devicesConfig, indoorOutdoorSensorConfig } from '../settings.js'
 
 import { Units } from 'homebridge'
 /*
@@ -95,7 +92,7 @@ export class IOSensor extends deviceBase {
     accessory.context.BatteryName = this.Battery.Name
 
     // InitializeTemperature Sensor Service
-    if (device.iosensor?.hide_temperature) {
+    if ((device as indoorOutdoorSensorConfig).hide_temperature) {
       if (this.TemperatureSensor) {
         this.debugLog('Removing Temperature Sensor Service')
         this.TemperatureSensor.Service = this.accessory.getService(this.hap.Service.TemperatureSensor) as Service
@@ -123,7 +120,7 @@ export class IOSensor extends deviceBase {
     }
 
     // Initialize Humidity Sensor Service
-    if (device.iosensor?.hide_humidity) {
+    if ((device as indoorOutdoorSensorConfig).hide_humidity) {
       if (this.HumiditySensor) {
         this.debugLog('Removing Humidity Sensor Service')
         this.HumiditySensor.Service = this.accessory.getService(this.hap.Service.HumiditySensor) as Service
@@ -151,7 +148,7 @@ export class IOSensor extends deviceBase {
       this.debugLog('Retrieve initial values and update Homekit')
       this.refreshStatus()
     } catch (e: any) {
-      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e}`)
+      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e.message ?? e}`)
     }
 
     // regisiter webhook event handler if enabled
@@ -159,7 +156,7 @@ export class IOSensor extends deviceBase {
       this.debugLog('Registering Webhook Event Handler')
       this.registerWebhook()
     } catch (e: any) {
-      this.errorLog(`failed to registerWebhook, Error: ${e}`)
+      this.errorLog(`failed to registerWebhook, Error: ${e.message ?? e}`)
     }
 
     // regisiter platform BLE event handler if enabled
@@ -167,7 +164,7 @@ export class IOSensor extends deviceBase {
       this.debugLog('Registering Platform BLE Event Handler')
       this.registerPlatformBLE()
     } catch (e: any) {
-      this.errorLog(`failed to registerPlatformBLE, Error: ${e}`)
+      this.errorLog(`failed to registerPlatformBLE, Error: ${e.message ?? e}`)
     }
 
     // Start an update interval
@@ -179,63 +176,62 @@ export class IOSensor extends deviceBase {
   }
 
   async BLEparseStatus(): Promise<void> {
-    await this.debugLog('BLEparseStatus')
-    await this.debugLog(`(battery, temperature, humidity) = BLE:(${this.serviceData.battery}, ${this.serviceData.celsius}, ${this.serviceData.humidity}), current:(${this.Battery.BatteryLevel}, ${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
-
-    // BatteryLevel
-    this.Battery.BatteryLevel = this.serviceData.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
-
-    // StatusLowBattery
-    this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
-      ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
-      : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
-
-    // CurrentRelativeHumidity
-    if (!this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
-      this.HumiditySensor.CurrentRelativeHumidity = validHumidity(this.serviceData.humidity, 0, 100)
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+    this.debugLog('BLEparseStatus')
+    this.debugLog(`(battery, temperature, humidity) = BLE:(${this.serviceData.battery}, ${this.serviceData.celsius}, ${this.serviceData.humidity}), current:(${this.Battery.BatteryLevel}, ${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
+    // Battery Info
+    if ('battery' in this.serviceData) {
+      // BatteryLevel
+      this.Battery.BatteryLevel = this.serviceData.battery
+      this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+      // StatusLowBattery
+      this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
+        ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
+        : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
+      this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
     }
-
+    // CurrentRelativeHumidity
+    if (!(this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
+      this.HumiditySensor.CurrentRelativeHumidity = validHumidity(this.serviceData.humidity, 0, 100)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+    }
     // Current Temperature
-    if (!this.device.meter?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
       const CELSIUS = this.serviceData.celsius < 0 ? 0 : this.serviceData.celsius > 100 ? 100 : this.serviceData.celsius
       this.TemperatureSensor.CurrentTemperature = CELSIUS
-      await this.debugLog(`Temperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
+      this.debugLog(`Temperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
   }
 
   async openAPIparseStatus(): Promise<void> {
-    await this.debugLog('openAPIparseStatus')
-    await this.debugLog(`(battery, temperature, humidity) = OpenAPI:(${this.deviceStatus.battery}, ${this.deviceStatus.temperature}, ${this.deviceStatus.humidity}), current:(${this.Battery.BatteryLevel}, ${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
+    this.debugLog('openAPIparseStatus')
+    this.debugLog(`(battery, temperature, humidity) = OpenAPI:(${this.deviceStatus.battery}, ${this.deviceStatus.temperature}, ${this.deviceStatus.humidity}), current:(${this.Battery.BatteryLevel}, ${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.deviceStatus.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
 
     // CurrentRelativeHumidity
-    if (!this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.CurrentRelativeHumidity = this.deviceStatus.humidity
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
     }
 
     // Current Temperature
-    if (!this.device.meter?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
       this.TemperatureSensor.CurrentTemperature = this.deviceStatus.temperature
-      await this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
+      this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
 
     // Firmware Version
     if (this.deviceStatus.version) {
       const version = this.deviceStatus.version.toString()
-      await this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
+      this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
       const deviceVersion = version.replace(/^V|-.*$/g, '') ?? '0.0.0'
       this.accessory
         .getService(this.hap.Service.AccessoryInformation)!
@@ -244,26 +240,26 @@ export class IOSensor extends deviceBase {
         .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
         .updateValue(deviceVersion)
       this.accessory.context.version = deviceVersion
-      await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+      this.debugSuccessLog(`version: ${this.accessory.context.version}`)
     }
   }
 
   async parseStatusWebhook(): Promise<void> {
-    await this.debugLog('parseStatusWebhook')
-    await this.debugLog(`(scale, temperature, humidity) = Webhook:(${this.webhookContext.scale}, ${convertUnits(this.webhookContext.temperature, this.webhookContext.scale, this.device.iosensor?.convertUnitTo)}, ${this.webhookContext.humidity}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
+    this.debugLog('parseStatusWebhook')
+    this.debugLog(`(scale, temperature, humidity) = Webhook:(${this.webhookContext.scale}, ${convertUnits(this.webhookContext.temperature, this.webhookContext.scale, (this.device as indoorOutdoorSensorConfig).convertUnitTo)}, ${this.webhookContext.humidity}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity})`)
 
-    if (this.webhookContext.scale !== 'CELSIUS' && this.device.iosensor?.convertUnitTo === undefined) {
-      await this.warnLog(`received a non-CELSIUS Webhook scale: ${this.webhookContext.scale}, Use the *convertUnitsTo* config under Hub settings, if displaying incorrectly in HomeKit.`)
+    if (this.webhookContext.scale !== 'CELSIUS' && (this.device as indoorOutdoorSensorConfig).convertUnitTo === undefined) {
+      this.warnLog(`received a non-CELSIUS Webhook scale: ${this.webhookContext.scale}, Use the *convertUnitsTo* config under Hub settings, if displaying incorrectly in HomeKit.`)
     }
     // CurrentRelativeHumidity
-    if (this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
+    if ((this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.CurrentRelativeHumidity = this.webhookContext.humidity
-      await this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
+      this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
     }
     // CurrentTemperature
-    if (this.device.iosensor?.hide_temperature && this.TemperatureSensor?.Service) {
-      this.TemperatureSensor.CurrentTemperature = convertUnits(this.webhookContext.temperature, this.webhookContext.scale, this.device.iosensor?.convertUnitTo)
-      await this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
+    if ((this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
+      this.TemperatureSensor.CurrentTemperature = convertUnits(this.webhookContext.temperature, this.webhookContext.scale, (this.device as indoorOutdoorSensorConfig).convertUnitTo)
+      this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
   }
 
@@ -272,102 +268,115 @@ export class IOSensor extends deviceBase {
    */
   async refreshStatus(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLERefreshStatus()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIRefreshStatus()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
     }
   }
 
   async BLERefreshStatus(): Promise<void> {
-    await this.debugLog('BLERefreshStatus')
-    const switchbot = await this.switchbotBLE()
-    if (switchbot === undefined) {
-      await this.BLERefreshConnection(switchbot)
+    this.debugLog('BLERefreshStatus')
+    const switchBotBLE = await this.switchbotBLE()
+    if (switchBotBLE === undefined) {
+      await this.BLERefreshConnection(switchBotBLE)
     } else {
       // Start to monitor advertisement packets
       (async () => {
         // Start to monitor advertisement packets
-        const serviceData = await this.monitorAdvertisementPackets(switchbot) as outdoorMeterServiceData
+        const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as outdoorMeterServiceData
         // Update HomeKit
         if (serviceData.model === SwitchBotBLEModel.OutdoorMeter && serviceData.modelName === SwitchBotBLEModelName.OutdoorMeter) {
           this.serviceData = serviceData
-          await this.BLEparseStatus()
-          await this.updateHomeKitCharacteristics()
+          if (serviceData !== undefined || serviceData !== null) {
+            await this.BLEparseStatus()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`serviceData is either undefined or null, serviceData: ${JSON.stringify(serviceData)}`)
+            await this.BLERefreshConnection(switchBotBLE)
+          }
         } else {
-          await this.errorLog(`failed to get serviceData, serviceData: ${serviceData}`)
-          await this.BLERefreshConnection(switchbot)
+          this.errorLog(`failed to get serviceData, serviceData: ${JSON.stringify(serviceData)}`)
+          await this.BLERefreshConnection(switchBotBLE)
         }
       })()
     }
   }
 
   async registerPlatformBLE(): Promise<void> {
-    await this.debugLog('registerPlatformBLE')
-    if (this.config.options?.BLE) {
-      await this.debugLog('is listening to Platform BLE.')
+    this.debugLog('registerPlatformBLE')
+    if (this.config.options?.BLE && !this.device.disablePlatformBLE) {
+      this.debugLog('is listening to Platform BLE.')
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         this.platform.bleEventHandler[this.device.bleMac] = async (context: outdoorMeterServiceData) => {
           try {
-            await this.debugLog(`received BLE: ${JSON.stringify(context)}`)
             this.serviceData = context
-            await this.BLEparseStatus()
-            await this.updateHomeKitCharacteristics()
+            if (context !== undefined || context !== null) {
+              this.debugLog(`received BLE: ${JSON.stringify(context)}`)
+              await this.BLEparseStatus()
+              await this.updateHomeKitCharacteristics()
+            } else {
+              this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+              await this.BLERefreshConnection(context)
+            }
           } catch (e: any) {
-            await this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e}`)
+            this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
           }
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog('is not listening to Platform BLE')
+      this.debugLog('is not listening to Platform BLE')
     }
   }
 
   async openAPIRefreshStatus(): Promise<void> {
-    await this.debugLog('openAPIRefreshStatus')
+    this.debugLog('openAPIRefreshStatus')
     try {
-      const { body, statusCode } = await this.deviceRefreshStatus()
-      const deviceStatus: any = await body.json()
-      await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-      if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-        await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      const response = await this.deviceRefreshStatus()
+      const deviceStatus: any = response.body
+      this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      if (await this.successfulStatusCodes(deviceStatus)) {
+        this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
         this.deviceStatus = deviceStatus.body
         await this.openAPIparseStatus()
         await this.updateHomeKitCharacteristics()
       } else {
-        await this.debugWarnLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        await this.debugWarnLog(statusCode, deviceStatus)
+        this.debugWarnLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
       }
     } catch (e: any) {
       await this.apiError(e)
-      await this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+      this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
     }
   }
 
   async registerWebhook() {
     if (this.device.webhook) {
-      await this.debugLog('is listening webhook.')
+      this.debugLog('is listening webhook.')
       this.platform.webhookEventHandler[this.device.deviceId] = async (context: outdoorMeterWebhookContext) => {
         try {
-          await this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
           this.webhookContext = context
-          await this.parseStatusWebhook()
-          await this.updateHomeKitCharacteristics()
+          if (context !== undefined || context !== null) {
+            this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
+            await this.parseStatusWebhook()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+          }
         } catch (e: any) {
-          await this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e}`)
+          this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
         }
       }
     } else {
-      await this.debugLog('is not listening webhook.')
+      this.debugLog('is not listening webhook.')
     }
   }
 
@@ -376,11 +385,11 @@ export class IOSensor extends deviceBase {
    */
   async updateHomeKitCharacteristics(): Promise<void> {
     // CurrentRelativeHumidity
-    if (!this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
       await this.updateCharacteristic(this.HumiditySensor.Service, this.hap.Characteristic.CurrentRelativeHumidity, this.HumiditySensor.CurrentRelativeHumidity, 'CurrentRelativeHumidity')
     }
     // CurrentTemperature
-    if (!this.device.iosensor?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
       await this.updateCharacteristic(this.TemperatureSensor.Service, this.hap.Characteristic.CurrentTemperature, this.TemperatureSensor.CurrentTemperature, 'CurrentTemperature')
     }
     // BatteryLevel
@@ -389,30 +398,30 @@ export class IOSensor extends deviceBase {
     await this.updateCharacteristic(this.Battery.Service, this.hap.Characteristic.StatusLowBattery, this.Battery.StatusLowBattery, 'StatusLowBattery')
   }
 
-  async BLERefreshConnection(switchbot: any): Promise<void> {
-    await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+  async BLERefreshConnection(switchbot: SwitchBotBLE): Promise<void> {
+    this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Refresh Status')
+      this.warnLog('Using OpenAPI Connection to Refresh Status')
       await this.openAPIRefreshStatus()
     }
   }
 
   async offlineOff(): Promise<void> {
     if (this.device.offline) {
-      if (!this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
+      if (!(this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
         this.HumiditySensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentRelativeHumidity, 50)
       }
-      if (!this.device.iosensor?.hide_temperature && this.TemperatureSensor?.Service) {
+      if (!(this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
         this.TemperatureSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentTemperature, 30)
       }
     }
   }
 
   async apiError(e: any): Promise<void> {
-    if (!this.device.iosensor?.hide_humidity && this.HumiditySensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_humidity && this.HumiditySensor?.Service) {
       this.HumiditySensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentRelativeHumidity, e)
     }
-    if (!this.device.iosensor?.hide_temperature && this.TemperatureSensor?.Service) {
+    if (!(this.device as indoorOutdoorSensorConfig).hide_temperature && this.TemperatureSensor?.Service) {
       this.TemperatureSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentTemperature, e)
     }
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.BatteryLevel, e)

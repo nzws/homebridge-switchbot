@@ -3,10 +3,10 @@
  * fan.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { bodyChange, irdevice } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { irDevicesConfig } from '../settings.js'
-import type { irdevice } from '../types/irdevicelist.js'
+import type { irDevicesConfig, irFanConfig } from '../settings.js'
 
 import { irdeviceBase } from './irdevice.js'
 
@@ -51,16 +51,16 @@ export class IRFan extends irdeviceBase {
       return this.Fan.Active
     }).onSet(this.ActiveSet.bind(this))
 
-    if (device.irfan?.rotation_speed) {
+    if ((device as irFanConfig).rotation_speed) {
       // handle Rotation Speed events using the RotationSpeed characteristic
       this.Fan.Service.getCharacteristic(this.hap.Characteristic.RotationSpeed).setProps({
-        minStep: device.irfan?.set_minStep ?? 1,
-        minValue: device.irfan?.set_min ?? 1,
-        maxValue: device.irfan?.set_max ?? 100,
+        minStep: (device as irFanConfig).set_minStep ?? 1,
+        minValue: (device as irFanConfig).set_min ?? 1,
+        maxValue: (device as irFanConfig).set_max ?? 100,
       }).onGet(() => {
         return this.Fan.RotationSpeed
       }).onSet(this.RotationSpeedSet.bind(this))
-    } else if (this.Fan.Service.testCharacteristic(this.hap.Characteristic.RotationSpeed) && !device.irfan?.swing_mode) {
+    } else if (this.Fan.Service.testCharacteristic(this.hap.Characteristic.RotationSpeed) && !(device as irFanConfig).swing_mode) {
       const characteristic = this.Fan.Service.getCharacteristic(this.hap.Characteristic.RotationSpeed)
       this.Fan.Service.removeCharacteristic(characteristic)
       this.debugLog('Rotation Speed Characteristic was removed.')
@@ -68,12 +68,12 @@ export class IRFan extends irdeviceBase {
       this.debugLog(`RotationSpeed Characteristic was not removed/added, Clear Cache on ${this.accessory.displayName} to remove Chracteristic`)
     }
 
-    if (device.irfan?.swing_mode) {
+    if ((device as irFanConfig).swing_mode) {
       // handle Osolcation events using the SwingMode characteristic
       this.Fan.Service.getCharacteristic(this.hap.Characteristic.SwingMode).onGet(() => {
         return this.Fan.SwingMode
       }).onSet(this.SwingModeSet.bind(this))
-    } else if (this.Fan.Service.testCharacteristic(this.hap.Characteristic.SwingMode) && !device.irfan?.swing_mode) {
+    } else if (this.Fan.Service.testCharacteristic(this.hap.Characteristic.SwingMode) && !(device as irFanConfig).swing_mode) {
       const characteristic = this.Fan.Service.getCharacteristic(this.hap.Characteristic.SwingMode)
       this.Fan.Service.removeCharacteristic(characteristic)
       this.debugLog('Swing Mode Characteristic was removed.')
@@ -83,7 +83,7 @@ export class IRFan extends irdeviceBase {
   }
 
   async SwingModeSet(value: CharacteristicValue): Promise<void> {
-    await this.debugLog(`SwingMode: ${value}`)
+    this.debugLog(`SwingMode: ${value}`)
     if (value > this.Fan.SwingMode) {
       this.Fan.SwingMode = 1
       await this.pushFanOnChanges()
@@ -98,7 +98,7 @@ export class IRFan extends irdeviceBase {
   }
 
   async RotationSpeedSet(value: CharacteristicValue): Promise<void> {
-    await this.debugLog(`RotationSpeed: ${value}`)
+    this.debugLog(`RotationSpeed: ${value}`)
     if (value > this.Fan.RotationSpeed) {
       this.Fan.RotationSpeed = 1
       this.pushFanSpeedUpChanges()
@@ -112,7 +112,7 @@ export class IRFan extends irdeviceBase {
   }
 
   async ActiveSet(value: CharacteristicValue): Promise<void> {
-    await this.debugLog(`Active: ${value}`)
+    this.debugLog(`Active: ${value}`)
 
     this.Fan.Active = value
     if (this.Fan.Active === this.hap.Characteristic.Active.ACTIVE) {
@@ -132,73 +132,72 @@ export class IRFan extends irdeviceBase {
    * Fan -        "command"       "highSpeed"      "default"          =        fan speed to high
    */
   async pushFanOnChanges(): Promise<void> {
-    await this.debugLog(`pushFanOnChanges Active: ${this.Fan.Active}, disablePushOn: ${this.disablePushOn}`)
-    if (this.Fan.Active === this.hap.Characteristic.Active.ACTIVE && !this.disablePushOn) {
+    this.debugLog(`pushFanOnChanges Active: ${this.Fan.Active}, disablePushOn: ${this.deviceDisablePushOn}`)
+    if (this.Fan.Active === this.hap.Characteristic.Active.ACTIVE && !this.deviceDisablePushOn) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOn()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushFanOffChanges(): Promise<void> {
-    await this.debugLog(`pushLightOffChanges Active: ${this.Fan.Active}, disablePushOff: ${this.disablePushOff}`)
-    if (this.Fan.Active === this.hap.Characteristic.Active.INACTIVE && !this.disablePushOff) {
+    this.debugLog(`pushLightOffChanges Active: ${this.Fan.Active}, disablePushOff: ${this.deviceDisablePushOff}`)
+    if (this.Fan.Active === this.hap.Characteristic.Active.INACTIVE && !this.deviceDisablePushOff) {
       const commandType: string = await this.commandType()
       const command: string = await this.commandOff()
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command,
         parameter: 'default',
         commandType,
-      })
+      }
       await this.pushChanges(bodyChange)
     }
   }
 
   async pushFanSpeedUpChanges(): Promise<void> {
-    const bodyChange = JSON.stringify({
+    const bodyChange: bodyChange = {
       command: 'highSpeed',
       parameter: 'default',
       commandType: 'command',
-    })
+    }
     await this.pushChanges(bodyChange)
   }
 
   async pushFanSpeedDownChanges(): Promise<void> {
-    const bodyChange = JSON.stringify({
+    const bodyChange: bodyChange = {
       command: 'lowSpeed',
       parameter: 'default',
       commandType: 'command',
-    })
+    }
     await this.pushChanges(bodyChange)
   }
 
   async pushFanSwingChanges(): Promise<void> {
-    const bodyChange = JSON.stringify({
+    const bodyChange: bodyChange = {
       command: 'swing',
       parameter: 'default',
       commandType: 'command',
-    })
+    }
     await this.pushChanges(bodyChange)
   }
 
   async pushChanges(bodyChange: any): Promise<void> {
-    await this.debugLog('pushChanges')
+    this.debugLog('pushChanges')
     if (this.device.connectionType === 'OpenAPI') {
-      this.infoLog(`Sending request to SwitchBot API, body: ${bodyChange},`)
+      this.infoLog(`Sending request to SwitchBot API, body: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.pushStatusCodes(statusCode, deviceStatus)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.successfulPushChange(statusCode, deviceStatus, bodyChange)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        await this.pushStatusCodes(deviceStatus)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          await this.successfulPushChange(deviceStatus, bodyChange)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
@@ -206,12 +205,12 @@ export class IRFan extends irdeviceBase {
         await this.pushChangeError(e)
       }
     } else {
-      await this.warnLog(`Connection Type: ${this.device.connectionType}, commands will not be sent to OpenAPI`)
+      this.warnLog(`Connection Type: ${this.device.connectionType}, commands will not be sent to OpenAPI`)
     }
   }
 
   async updateHomeKitCharacteristics(): Promise<void> {
-    await this.debugLog('updateHomeKitCharacteristics')
+    this.debugLog('updateHomeKitCharacteristics')
     // Active
     await this.updateCharacteristic(this.Fan.Service, this.hap.Characteristic.Active, this.Fan.Active, 'Active')
     // SwingMode

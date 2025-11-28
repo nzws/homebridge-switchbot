@@ -3,13 +3,10 @@
  * curtain.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicChange, CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { bodyChange, curtain3ServiceData, curtain3WebhookContext, curtainServiceData, curtainStatus, curtainWebhookContext, device, SwitchBotBLE, SwitchbotDevice, WoCurtain } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
-import type { devicesConfig } from '../settings.js'
-import type { curtain3ServiceData, curtainServiceData } from '../types/bledevicestatus.js'
-import type { device } from '../types/devicelist.js'
-import type { curtainStatus } from '../types/devicestatus.js'
-import type { curtain3WebhookContext, curtainWebhookContext } from '../types/devicewebhookstatus.js'
+import type { curtainConfig, devicesConfig } from '../settings.js'
 
 import { hostname } from 'node:os'
 
@@ -20,7 +17,7 @@ import { hostname } from 'node:os'
 import { SwitchBotBLEModel, SwitchBotBLEModelName } from 'node-switchbot'
 import { debounceTime, interval, skipWhile, Subject, take, tap } from 'rxjs'
 
-import { formatDeviceIdAsMac } from '../utils.js'
+import { formatDeviceIdAsMac, isCurtainDevice } from '../utils.js'
 import { deviceBase } from './device.js'
 
 export class Curtain extends deviceBase {
@@ -113,7 +110,7 @@ export class Curtain extends deviceBase {
 
     // Initialize WindowCovering CurrentPosition
     this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.CurrentPosition).setProps({
-      minStep: device.curtain?.set_minStep ?? 1,
+      minStep: (device as curtainConfig).set_minStep ?? 1,
       minValue: 0,
       maxValue: 100,
       validValueRanges: [0, 100],
@@ -123,7 +120,7 @@ export class Curtain extends deviceBase {
 
     // Initialize WindowCovering TargetPosition
     this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.TargetPosition).setProps({
-      minStep: device.curtain?.set_minStep ?? 1,
+      minStep: (device as curtainConfig).set_minStep ?? 1,
       minValue: 0,
       maxValue: 100,
       validValueRanges: [0, 100],
@@ -161,14 +158,14 @@ export class Curtain extends deviceBase {
     })
 
     // Initialize LightSensor Service
-    if (device.curtain?.hide_lightsensor || (device.deviceType !== 'curtain' && device.deviceType !== 'curtain3')) {
+    if ((device as curtainConfig).hide_lightsensor || !isCurtainDevice(device)) {
       if (this.LightSensor?.Service) {
         this.debugLog('Removing Light Sensor Service')
         this.LightSensor.Service = this.accessory.getService(this.hap.Service.LightSensor) as Service
         accessory.removeService(this.LightSensor.Service)
         accessory.context.LightSensor = {}
       }
-    } else if (device.deviceType === 'curtain' || device.deviceType === 'curtain3') {
+    } else {
       accessory.context.LightSensor = accessory.context.LightSensor ?? {}
       this.LightSensor = {
         Name: `${accessory.displayName} Light Sensor`,
@@ -184,7 +181,7 @@ export class Curtain extends deviceBase {
     }
 
     // Initialize Open Mode Switch Service
-    if (!device.curtain?.silentModeSwitch) {
+    if (!(device as curtainConfig).silentModeSwitch) {
       if (this.OpenModeSwitch?.Service) {
         this.debugLog('Removing Open Mode Switch Service')
         this.OpenModeSwitch.Service = this.accessory.getService(this.hap.Service.Switch) as Service
@@ -212,7 +209,7 @@ export class Curtain extends deviceBase {
     }
 
     // Initialize Close Mode Switch Service
-    if (!device.curtain?.silentModeSwitch) {
+    if (!(device as curtainConfig).silentModeSwitch) {
       if (this.CloseModeSwitch?.Service) {
         this.debugLog('Removing Close Mode Switch Service')
         this.CloseModeSwitch.Service = this.accessory.getService(this.hap.Service.Switch) as Service
@@ -244,7 +241,7 @@ export class Curtain extends deviceBase {
       this.debugLog('Retrieve initial values and update Homekit')
       this.refreshStatus()
     } catch (e: any) {
-      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e}`)
+      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e.message ?? e}`)
     }
 
     // regisiter webhook event handler if enabled
@@ -252,7 +249,7 @@ export class Curtain extends deviceBase {
       this.debugLog('Registering Webhook Event Handler')
       this.registerWebhook()
     } catch (e: any) {
-      this.errorLog(`failed to registerWebhook, Error: ${e}`)
+      this.errorLog(`failed to registerWebhook, Error: ${e.message ?? e}`)
     }
 
     // regisiter platform BLE event handler if enabled
@@ -260,7 +257,7 @@ export class Curtain extends deviceBase {
       this.debugLog('Registering Platform BLE Event Handler')
       this.registerPlatformBLE()
     } catch (e: any) {
-      this.errorLog(`failed to registerPlatformBLE, Error: ${e}`)
+      this.errorLog(`failed to registerPlatformBLE, Error: ${e.message ?? e}`)
     }
 
     // History
@@ -280,7 +277,7 @@ export class Curtain extends deviceBase {
         if (this.WindowCovering.PositionState === this.hap.Characteristic.PositionState.STOPPED) {
           return
         }
-        await this.debugLog(`Refresh Status When Moving, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Refresh Status When Moving, PositionState: ${this.WindowCovering.PositionState}`)
         await this.refreshStatus()
       })
 
@@ -298,7 +295,7 @@ export class Curtain extends deviceBase {
           await this.pushChanges()
         } catch (e: any) {
           await this.apiError(e)
-          await this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+          this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
         }
         this.curtainUpdateInProgress = false
       })
@@ -328,7 +325,7 @@ export class Curtain extends deviceBase {
     try {
       const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
       this.device.bleMac = formattedDeviceId
-      await this.debugLog(`bleMac: ${this.device.bleMac}`)
+      this.debugLog(`bleMac: ${this.device.bleMac}`)
       this.historyService = new this.platform.fakegatoAPI('custom', this.accessory, {
         log: this.platform.log,
         storage: 'fs',
@@ -336,7 +333,7 @@ export class Curtain extends deviceBase {
       })
       const motion: Service
       = this.accessory.getService(this.hap.Service.MotionSensor)
-      || this.accessory.addService(this.hap.Service.MotionSensor, 'Motion')
+        || this.accessory.addService(this.hap.Service.MotionSensor, 'Motion')
       motion.addOptionalCharacteristic(this.platform.eve.Characteristics.LastActivation)
       motion.getCharacteristic(this.platform.eve.Characteristics.LastActivation).onGet(() => {
         const lastActivation = this.accessory.context.lastActivation
@@ -362,75 +359,80 @@ export class Curtain extends deviceBase {
       })
       this.updateHistory()
     } catch (error) {
-      await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+      this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
     }
   }
 
-  async updateHistory(): Promise<void> {
+  updateHistory(): void {
     const motion = Number(this.WindowCovering.CurrentPosition) > 0 ? 1 : 0
     this.historyService.addEntry({
       time: Math.round(new Date().valueOf() / 1000),
       motion,
     })
-    setTimeout(async () => {
-      await this.updateHistory()
+    setTimeout(() => {
+      this.updateHistory()
     }, 10 * 60 * 1000)
   }
 
   async BLEparseStatus(): Promise<void> {
-    await this.debugLog('BLEparseStatus')
-    await this.debugLog(`(position, battery) = BLE:(${this.serviceData.position}, ${this.serviceData.battery}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel})`)
+    this.debugLog('BLEparseStatus')
+    this.debugLog(`(position, battery) = BLE:(${this.serviceData.position}, ${this.serviceData.battery}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel})`)
     // CurrentPosition
-    this.WindowCovering.CurrentPosition = 100 - this.serviceData.position
-    await this.getCurrentPostion()
+    if ('position' in this.serviceData) {
+      this.WindowCovering.CurrentPosition = 100 - this.serviceData.position
+      await this.getCurrentPostion()
+    }
     // CurrentAmbientLightLevel
-    if (!this.device.curtain?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.curtain?.set_minLux ?? 1
-      const set_maxLux = this.device.curtain?.set_maxLux ?? 6001
+    if (!(this.device as curtainConfig).hide_lightsensor && this.LightSensor?.Service && 'lightLevel' in this.serviceData) {
+      const set_minLux = (this.device as curtainConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as curtainConfig).set_maxLux ?? 6001
       const lightLevel = this.serviceData.lightLevel
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
       this.debugLog(`LightLevel: ${this.serviceData.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
     }
-    // BatteryLevel
-    this.Battery.BatteryLevel = this.serviceData.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
-    // StatusLowBattery
-    this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
-      ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
-      : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    // Battery Info
+    if ('battery' in this.serviceData) {
+      // BatteryLevel
+      this.Battery.BatteryLevel = this.serviceData.battery
+      this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+      // StatusLowBattery
+      this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
+        ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
+        : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
+      this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    }
   }
 
   async openAPIparseStatus(): Promise<void> {
-    await this.debugLog('openAPIparseStatus')
-    await this.debugLog(`(slidePosition, battery, version) = OpenAPI:(${this.deviceStatus.slidePosition}, ${this.deviceStatus.battery}, ${this.deviceStatus.version}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
+    this.debugLog('openAPIparseStatus')
+    this.debugLog(`(slidePosition, battery, version) = OpenAPI:(${this.deviceStatus.slidePosition}, ${this.deviceStatus.battery}, ${this.deviceStatus.version}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel}, ${this.accessory.context.version})`)
     // CurrentPosition
     this.WindowCovering.CurrentPosition = 100 - this.deviceStatus.slidePosition
     await this.getCurrentPostion()
 
     // Brightness
-    if (!this.device.curtain?.hide_lightsensor && this.LightSensor?.Service) {
-      const set_minLux = this.device.curtain?.set_minLux ?? 1
-      const set_maxLux = this.device.curtain?.set_maxLux ?? 6001
+    if (!(this.device as curtainConfig).hide_lightsensor && this.LightSensor?.Service) {
+      const set_minLux = (this.device as curtainConfig).set_minLux ?? 1
+      const set_maxLux = (this.device as curtainConfig).set_maxLux ?? 6001
       const lightLevel = this.deviceStatus.lightLevel === 'bright' ? set_maxLux : set_minLux
-      this.LightSensor.CurrentAmbientLightLevel = await this.getLightLevel(lightLevel, set_minLux, set_maxLux, 2)
-      await this.debugLog(`CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
+      this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 2)
+      this.debugLog(`CurrentAmbientLightLevel: ${this.LightSensor.CurrentAmbientLightLevel}`)
     }
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.deviceStatus.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
 
     // Firmware Version
     if (this.deviceStatus.version) {
       const version = this.deviceStatus.version.toString()
-      await this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
+      this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
       const deviceVersion = version.replace(/^V|-.*$/g, '') ?? '0.0.0'
       this.accessory
         .getService(this.hap.Service.AccessoryInformation)!
@@ -439,13 +441,13 @@ export class Curtain extends deviceBase {
         .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
         .updateValue(deviceVersion)
       this.accessory.context.version = deviceVersion
-      await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+      this.debugSuccessLog(`version: ${this.accessory.context.version}`)
     }
   }
 
   async parseStatusWebhook(): Promise<void> {
-    await this.debugLog('parseStatusWebhook')
-    await this.debugLog(`(slidePosition, battery) = Webhook:(${this.webhookContext.slidePosition}, ${this.webhookContext.battery}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel})`)
+    this.debugLog('parseStatusWebhook')
+    this.debugLog(`(slidePosition, battery) = Webhook:(${this.webhookContext.slidePosition}, ${this.webhookContext.battery}), current:(${this.WindowCovering.CurrentPosition}, ${this.Battery.BatteryLevel})`)
 
     // CurrentPosition
     this.WindowCovering.CurrentPosition = 100 - this.webhookContext.slidePosition
@@ -453,13 +455,13 @@ export class Curtain extends deviceBase {
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.webhookContext.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
   }
 
   /**
@@ -467,103 +469,116 @@ export class Curtain extends deviceBase {
    */
   async refreshStatus(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLERefreshStatus()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIRefreshStatus()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
     }
   }
 
   async BLERefreshStatus(): Promise<void> {
-    await this.debugLog('BLERefreshStatus')
-    const switchbot = await this.switchbotBLE()
-    if (switchbot === undefined) {
-      await this.BLERefreshConnection(switchbot)
+    this.debugLog('BLERefreshStatus')
+    const switchBotBLE = await this.switchbotBLE()
+    if (switchBotBLE === undefined) {
+      await this.BLERefreshConnection(switchBotBLE)
     } else {
       // Start to monitor advertisement packets
       (async () => {
         // Start to monitor advertisement packets
-        const serviceData = await this.monitorAdvertisementPackets(switchbot) as curtainServiceData | curtain3ServiceData
+        const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as curtainServiceData | curtain3ServiceData
         // Update HomeKit
         if ((serviceData.model === SwitchBotBLEModel.Curtain || SwitchBotBLEModel.Curtain3)
           && (serviceData.modelName === SwitchBotBLEModelName.Curtain || SwitchBotBLEModelName.Curtain3)) {
           this.serviceData = serviceData
-          await this.BLEparseStatus()
-          await this.updateHomeKitCharacteristics()
+          if (serviceData !== undefined || serviceData !== null) {
+            await this.BLEparseStatus()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`serviceData is either undefined or null, serviceData: ${JSON.stringify(serviceData)}`)
+            await this.BLERefreshConnection(switchBotBLE)
+          }
         } else {
-          await this.errorLog(`failed to get serviceData, serviceData: ${serviceData}`)
-          await this.BLERefreshConnection(switchbot)
+          this.errorLog(`failed to get serviceData, serviceData: ${JSON.stringify(serviceData)}`)
+          await this.BLERefreshConnection(switchBotBLE)
         }
       })()
     }
   }
 
   async openAPIRefreshStatus(): Promise<void> {
-    await this.debugLog('openAPIRefreshStatus')
+    this.debugLog('openAPIRefreshStatus')
     try {
-      const { body, statusCode } = await this.deviceRefreshStatus()
-      const deviceStatus: any = await body.json()
-      await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-      if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-        await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      const { body } = await this.deviceRefreshStatus()
+      const deviceStatus: any = body
+      this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      if (await this.successfulStatusCodes(deviceStatus)) {
+        this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
         this.deviceStatus = deviceStatus.body
         await this.openAPIparseStatus()
         await this.updateHomeKitCharacteristics()
       } else {
-        await this.debugWarnLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        await this.debugWarnLog(statusCode, deviceStatus)
+        this.debugWarnLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
       }
     } catch (e: any) {
       await this.apiError(e)
-      await this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+      this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
     }
   }
 
   async registerWebhook() {
     if (this.device.webhook) {
-      await this.debugLog('is listening webhook.')
+      this.debugLog('is listening webhook.')
       this.platform.webhookEventHandler[this.device.deviceId] = async (context: curtainWebhookContext | curtain3WebhookContext) => {
         try {
-          await this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
           this.webhookContext = context
-          await this.parseStatusWebhook()
-          await this.updateHomeKitCharacteristics()
+          if (context !== undefined || context !== null) {
+            this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
+            await this.parseStatusWebhook()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+          }
         } catch (e: any) {
-          await this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e}`)
+          this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
         }
       }
     } else {
-      await this.debugLog('is not listening webhook.')
+      this.debugLog('is not listening webhook.')
     }
   }
 
   async registerPlatformBLE(): Promise<void> {
-    await this.debugLog('registerPlatformBLE')
-    if (this.config.options?.BLE) {
-      await this.debugLog('is listening to Platform BLE.')
+    this.debugLog('registerPlatformBLE')
+    if (this.config.options?.BLE && !this.device.disablePlatformBLE) {
+      this.debugLog('is listening to Platform BLE.')
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         this.platform.bleEventHandler[this.device.bleMac] = async (context: curtainServiceData | curtain3ServiceData) => {
           try {
-            await this.debugLog(`received BLE: ${JSON.stringify(context)}`)
             this.serviceData = context
-            await this.BLEparseStatus()
-            await this.updateHomeKitCharacteristics()
+            if (context !== undefined || context !== null) {
+              this.debugLog(`received BLE: ${JSON.stringify(context)}`)
+              await this.BLEparseStatus()
+              await this.updateHomeKitCharacteristics()
+            } else {
+              this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+              await this.BLERefreshConnection(context)
+            }
           } catch (e: any) {
-            await this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e}`)
+            this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
           }
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog('is not listening to Platform BLE')
+      this.debugLog('is not listening to Platform BLE')
     }
   }
 
@@ -572,14 +587,14 @@ export class Curtain extends deviceBase {
    */
   async pushChanges(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLEpushChanges()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIpushChanges()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
     }
     // Refresh the status from the API
     interval(15000)
@@ -591,88 +606,88 @@ export class Curtain extends deviceBase {
   }
 
   async BLEpushChanges(): Promise<void> {
-    await this.debugLog('BLEpushChanges')
+    this.debugLog('BLEpushChanges')
     if (this.WindowCovering.TargetPosition !== this.WindowCovering.CurrentPosition) {
-      const switchbot = await this.platform.connectBLE(this.accessory, this.device)
+      const switchBotBLE = await this.platform.connectBLE(this.accessory, this.device)
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         const { setPositionMode, Mode }: { setPositionMode: number, Mode: string } = await this.setPerformance()
         const adjustedMode = setPositionMode === 1 ? 0x01 : 0xFF
-        await this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
-        if (switchbot !== false) {
-          switchbot
+        this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
+        if (switchBotBLE !== false) {
+          switchBotBLE
             .discover({ model: this.device.bleModel, quick: true, id: this.device.bleMac })
-            .then(async (device_list: any) => {
+            .then(async (device_list: SwitchbotDevice[]) => {
+              const deviceList = device_list as WoCurtain[]
               return await this.retryBLE({
-                max: await this.maxRetryBLE(),
+                max: this.maxRetryBLE(),
                 fn: async () => {
-                  return await device_list[0].runToPos(100 - Number(this.WindowCovering.TargetPosition), adjustedMode)
+                  return await deviceList[0].runToPos(100 - Number(this.WindowCovering.TargetPosition), adjustedMode)
                 },
               })
             })
             .then(async () => {
-              await this.successLog(`TargetPostion: ${this.WindowCovering.TargetPosition} sent over SwitchBot BLE,  sent successfully`)
+              this.successLog(`TargetPostion: ${this.WindowCovering.TargetPosition} sent over SwitchBot BLE, sent successfully`)
               await this.updateHomeKitCharacteristics()
             })
             .catch(async (e: any) => {
               await this.apiError(e)
-              await this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+              this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
               await this.BLEPushConnection()
             })
         } else {
-          await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+          this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${JSON.stringify(switchBotBLE)}`)
           await this.BLEPushConnection()
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog(`No changes (BLEpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`No changes (BLEpushChanges), TargetPosition: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     }
   }
 
   async openAPIpushChanges(): Promise<void> {
-    await this.debugLog('openAPIpushChanges')
+    this.debugLog('openAPIpushChanges')
     if (this.WindowCovering.TargetPosition !== this.WindowCovering.CurrentPosition || this.device.disableCaching) {
-      await this.debugLog(`Pushing ${this.WindowCovering.TargetPosition}`)
+      this.debugLog(`Pushing ${this.WindowCovering.TargetPosition}`)
       const adjustedTargetPosition = 100 - Number(this.WindowCovering.TargetPosition)
       const { setPositionMode, Mode }: { setPositionMode: number, Mode: string } = await this.setPerformance()
-      await this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
+      this.debugLog(`Mode: ${Mode}, setPositionMode: ${setPositionMode}`)
       const adjustedMode = setPositionMode || 'ff'
-      let bodyChange: string
+      let bodyChange: bodyChange
       if (this.WindowCovering.HoldPosition) {
-        bodyChange = JSON.stringify({
+        bodyChange = {
           command: 'pause',
           parameter: 'default',
           commandType: 'command',
-        })
+        }
       } else {
-        bodyChange = JSON.stringify({
+        bodyChange = {
           command: 'setPosition',
           parameter: `0,${adjustedMode},${adjustedTargetPosition}`,
           commandType: 'command',
-        })
+        }
       }
-      await this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
+      this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
         await this.apiError(e)
-        await this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+        this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
       }
     } else {
-      await this.debugLog(`No changes (openAPIpushChanges), CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}`)
+      this.debugLog(`No changes (openAPIpushChanges), CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}`)
     }
   }
 
@@ -681,9 +696,9 @@ export class Curtain extends deviceBase {
    */
   async TargetPositionSet(value: CharacteristicValue): Promise<void> {
     if (this.WindowCovering.TargetPosition !== this.accessory.context.TargetPosition) {
-      await this.infoLog(`Set TargetPosition: ${value}`)
+      this.infoLog(`Set TargetPosition: ${value}`)
     } else {
-      await this.debugLog(`No Changes, TargetPosition: ${value}`)
+      this.debugLog(`No Changes, TargetPosition: ${value}`)
     }
 
     // Set HoldPosition to false when TargetPosition is changed
@@ -701,15 +716,15 @@ export class Curtain extends deviceBase {
     if (this.WindowCovering.TargetPosition > this.WindowCovering.CurrentPosition) {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.INCREASING
       this.setNewTarget = true
-      await this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     } else if (this.WindowCovering.TargetPosition < this.WindowCovering.CurrentPosition) {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.DECREASING
       this.setNewTarget = true
-      await this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     } else {
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
       this.setNewTarget = false
-      await this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`value: ${this.WindowCovering.TargetPosition}, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
     }
     this.WindowCovering.Service.setCharacteristic(this.hap.Characteristic.PositionState, this.WindowCovering.PositionState)
     this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
@@ -719,10 +734,10 @@ export class Curtain extends deviceBase {
      * The minimum time depends on the network control latency.
      */
     clearTimeout(this.setNewTargetTimer)
-    await this.debugLog(`deviceUpdateRate: ${this.deviceUpdateRate}`)
+    this.debugLog(`deviceUpdateRate: ${this.deviceUpdateRate}`)
     if (this.setNewTarget) {
       this.setNewTargetTimer = setTimeout(async () => {
-        await this.debugLog(`setNewTarget ${this.setNewTarget} timeout`)
+        this.debugLog(`setNewTarget ${this.setNewTarget} timeout`)
         this.setNewTarget = false
       }, this.deviceUpdateRate * 1000)
     }
@@ -742,7 +757,7 @@ export class Curtain extends deviceBase {
    * Handle requests to set the value of the "Target Position" characteristic
    */
   async OpenModeSwitchSet(value: CharacteristicValue): Promise<void> {
-    if (this.OpenModeSwitch && this.device.curtain?.silentModeSwitch) {
+    if (this.OpenModeSwitch && (this.device as curtainConfig).silentModeSwitch) {
       this.debugLog(`Silent Open Mode: ${value}`)
       this.OpenModeSwitch.On = value
       this.accessory.context.OpenModeSwitch.On = value
@@ -756,7 +771,7 @@ export class Curtain extends deviceBase {
    * Handle requests to set the value of the "Target Position" characteristic
    */
   async CloseModeSwitchSet(value: CharacteristicValue): Promise<void> {
-    if (this.CloseModeSwitch && this.device.curtain?.silentModeSwitch) {
+    if (this.CloseModeSwitch && (this.device as curtainConfig).silentModeSwitch) {
       this.debugLog(`Silent Close Mode: ${value}`)
       this.CloseModeSwitch.On = value
       this.accessory.context.CloseModeSwitch.On = value
@@ -777,7 +792,7 @@ export class Curtain extends deviceBase {
     // HoldPosition
     await this.updateCharacteristic(this.WindowCovering.Service, this.hap.Characteristic.HoldPosition, this.WindowCovering.HoldPosition, 'HoldPosition')
     // CurrentAmbientLightLevel
-    if (!this.device.curtain?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as curtainConfig).hide_lightsensor && this.LightSensor?.Service) {
       const history = { time: Math.round(new Date().valueOf() / 1000), lux: this.LightSensor.CurrentAmbientLightLevel }
       await this.updateCharacteristic(this.LightSensor?.Service, this.hap.Characteristic.CurrentAmbientLightLevel, this.LightSensor?.CurrentAmbientLightLevel, 'CurrentAmbientLightLevel', history)
     }
@@ -791,15 +806,15 @@ export class Curtain extends deviceBase {
 
   async BLEPushConnection() {
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Push Changes')
+      this.warnLog('Using OpenAPI Connection to Push Changes')
       await this.openAPIpushChanges()
     }
   }
 
-  async BLERefreshConnection(switchbot: any): Promise<void> {
-    await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+  async BLERefreshConnection(switchbot: SwitchBotBLE): Promise<void> {
+    this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Refresh Status')
+      this.warnLog('Using OpenAPI Connection to Refresh Status')
       await this.openAPIRefreshStatus()
     }
   }
@@ -808,10 +823,10 @@ export class Curtain extends deviceBase {
     let setPositionMode: number
     let Mode: string
     if (Number(this.WindowCovering.TargetPosition) > 50) {
-      if (this.device.curtain?.setOpenMode === '1' || this.OpenModeSwitch?.On) {
+      if ((this.device as curtainConfig).setOpenMode === '1' || this.OpenModeSwitch?.On) {
         setPositionMode = 1
         Mode = 'Silent Mode'
-      } else if (this.device.curtain?.setOpenMode === '0' || !this.OpenModeSwitch?.On) {
+      } else if ((this.device as curtainConfig).setOpenMode === '0' || !this.OpenModeSwitch?.On) {
         setPositionMode = 0
         Mode = 'Performance Mode'
       } else {
@@ -819,10 +834,10 @@ export class Curtain extends deviceBase {
         Mode = 'Default Mode'
       }
     } else {
-      if (this.device.curtain?.setCloseMode === '1' || this.CloseModeSwitch?.On) {
+      if ((this.device as curtainConfig).setCloseMode === '1' || this.CloseModeSwitch?.On) {
         setPositionMode = 1
         Mode = 'Silent Mode'
-      } else if (this.device.curtain?.setCloseMode === '0' || !this.CloseModeSwitch?.On) {
+      } else if ((this.device as curtainConfig).setCloseMode === '0' || !this.CloseModeSwitch?.On) {
         setPositionMode = 0
         Mode = 'Performance Mode'
       } else {
@@ -836,52 +851,51 @@ export class Curtain extends deviceBase {
 
   async getCurrentPostion(): Promise<void> {
     await this.setMinMax()
-    await this.debugLog(`CurrentPosition ${this.WindowCovering.CurrentPosition}`)
+    this.debugLog(`CurrentPosition ${this.WindowCovering.CurrentPosition}`)
     this.hasLoggedStandby = this.hasLoggedStandby ?? false
-    if (this.setNewTarget || this.deviceStatus.moving) {
+    if (this.deviceStatus ? (this.setNewTarget || this.deviceStatus.moving) : this.setNewTarget) {
       this.hasLoggedStandby = false
       this.infoLog('Checking Status ...')
       this.curtainMoving = true
-      await this.setMinMax()
       if (this.WindowCovering.TargetPosition > this.WindowCovering.CurrentPosition) {
-        await this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Closing, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.INCREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Increasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else if (this.WindowCovering.TargetPosition < this.WindowCovering.CurrentPosition) {
-        await this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Opening, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.DECREASING
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Decreasing, PositionState: ${this.WindowCovering.PositionState}`)
       } else {
-        await this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+        this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
         this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
         this.WindowCovering.Service.getCharacteristic(this.hap.Characteristic.PositionState).updateValue(this.WindowCovering.PositionState)
-        await this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
+        this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
       }
     } else {
       if (!this.hasLoggedStandby) {
-        await this.infoLog('Standby ...')
+        this.infoLog('Standby ...')
         this.hasLoggedStandby = true
       }
       this.curtainMoving = false
-      await this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
+      this.debugLog(`Standby, CurrentPosition: ${this.WindowCovering.CurrentPosition}`)
       this.WindowCovering.TargetPosition = this.WindowCovering.CurrentPosition
       this.WindowCovering.PositionState = this.hap.Characteristic.PositionState.STOPPED
-      await this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
+      this.debugLog(`Stopped, PositionState: ${this.WindowCovering.PositionState}`)
     }
-    await this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState},`)
+    this.debugLog(`CurrentPosition: ${this.WindowCovering.CurrentPosition}, TargetPosition: ${this.WindowCovering.TargetPosition}, PositionState: ${this.WindowCovering.PositionState},`)
   }
 
   async setMinMax(): Promise<void> {
-    if (this.device.curtain?.set_min) {
-      if (Number(this.WindowCovering.CurrentPosition) <= this.device.curtain?.set_min) {
-        this.WindowCovering.CurrentPosition = 0
+    if ((this.device as curtainConfig).set_min) {
+      if (Number(this.WindowCovering.CurrentPosition) >= (this.device as curtainConfig).set_min!) {
+        this.WindowCovering.CurrentPosition = 100
       }
     }
-    if (this.device.curtain?.set_max) {
-      if (Number(this.WindowCovering.CurrentPosition) >= this.device.curtain?.set_max) {
-        this.WindowCovering.CurrentPosition = 100
+    if ((this.device as curtainConfig).set_max) {
+      if (Number(this.WindowCovering.CurrentPosition) <= (this.device as curtainConfig).set_max!) {
+        this.WindowCovering.CurrentPosition = 0
       }
     }
     if (this.device.history) {
@@ -906,7 +920,7 @@ export class Curtain extends deviceBase {
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.BatteryLevel, e)
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.StatusLowBattery, e)
     this.Battery.Service.updateCharacteristic(this.hap.Characteristic.ChargingState, e)
-    if (!this.device.curtain?.hide_lightsensor && this.LightSensor?.Service) {
+    if (!(this.device as curtainConfig).hide_lightsensor && this.LightSensor?.Service) {
       this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.CurrentAmbientLightLevel, e)
       this.LightSensor.Service.updateCharacteristic(this.hap.Characteristic.StatusActive, e)
     }

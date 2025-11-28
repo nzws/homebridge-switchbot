@@ -3,13 +3,10 @@
  * plug.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
+import type { batteryCirculatorFanServiceData, batteryCirculatorFanStatus, batteryCirculatorFanWebhookContext, bodyChange, device, SwitchBotBLE, SwitchbotDevice } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
 import type { devicesConfig } from '../settings.js'
-import type { batteryCirculatorFanServiceData } from '../types/bledevicestatus.js'
-import type { device } from '../types/devicelist.js'
-import type { batteryCirculatorFanStatus } from '../types/devicestatus.js'
-import type { batteryCirculatorFanWebhookContext } from '../types/devicewebhookstatus.js'
 
 /*
 * For Testing Locally:
@@ -149,7 +146,7 @@ export class Fan extends deviceBase {
       this.debugLog('Retrieve initial values and update Homekit')
       this.refreshStatus()
     } catch (e: any) {
-      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e}`)
+      this.errorLog(`failed to retrieve initial values and update Homekit, Error: ${e.message ?? e}`)
     }
 
     // regisiter webhook event handler if enabled
@@ -157,7 +154,7 @@ export class Fan extends deviceBase {
       this.debugLog('Registering Webhook Event Handler')
       this.registerWebhook()
     } catch (e: any) {
-      this.errorLog(`failed to registerWebhook, Error: ${e}`)
+      this.errorLog(`failed to registerWebhook, Error: ${e.message ?? e}`)
     }
 
     // regisiter platform BLE event handler if enabled
@@ -165,7 +162,7 @@ export class Fan extends deviceBase {
       this.debugLog('Registering Platform BLE Event Handler')
       this.registerPlatformBLE()
     } catch (e: any) {
-      this.errorLog(`failed to registerPlatformBLE, Error: ${e}`)
+      this.errorLog(`failed to registerPlatformBLE, Error: ${e.message ?? e}`)
     }
 
     // Start an update interval
@@ -189,27 +186,28 @@ export class Fan extends deviceBase {
           await this.pushChanges()
         } catch (e: any) {
           await this.apiError(e)
-          await this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+          this.errorLog(`failed pushChanges with ${device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
         }
         this.fanUpdateInProgress = false
       })
   }
 
   async BLEparseStatus(): Promise<void> {
-    await this.debugLog('BLEparseStatus')
-    await this.debugLog(`(powerState, fanSpeed) = BLE:(${this.serviceData.state}, ${this.serviceData.fanSpeed}), current:(${this.Fan.Active}, ${this.Fan.RotationSpeed})`)
+    this.debugLog('BLEparseStatus')
+    this.debugLog(`(powerState, fanSpeed) = BLE:(${this.serviceData.state}, ${this.serviceData.fanSpeed}), current:(${this.Fan.Active}, ${this.Fan.RotationSpeed})`)
 
     // Active
     this.Fan.Active = this.serviceData.state === 'on' ? this.hap.Characteristic.Active.ACTIVE : this.hap.Characteristic.Active.INACTIVE
-    await this.debugLog(`Active: ${this.Fan.Active}`)
+    this.debugLog(`Active: ${this.Fan.Active}`)
 
     // RotationSpeed
-    this.Fan.RotationSpeed = this.serviceData.fanSpeed
+    this.Fan.RotationSpeed = this.serviceData.fanSpeed // ?? 0
+    this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
   }
 
   async openAPIparseStatus() {
-    await this.debugLog('openAPIparseStatus')
-    await this.debugLog(`(version, battery, powerState, oscillation, chargingStatus, fanSpeed) = OpenAPI:(${this.deviceStatus.version}, ${this.deviceStatus.battery}, ${this.deviceStatus.power}, ${this.deviceStatus.oscillation}, ${this.deviceStatus.chargingStatus}, ${this.deviceStatus.fanSpeed}), current:(${this.accessory.context.version}, ${this.Battery.BatteryLevel}, ${this.Fan.Active}, ${this.Fan.SwingMode}, ${this.Battery.ChargingState}, ${this.Fan.RotationSpeed})`)
+    this.debugLog('openAPIparseStatus')
+    this.debugLog(`(version, battery, powerState, oscillation, chargingStatus, fanSpeed) = OpenAPI:(${this.deviceStatus.version}, ${this.deviceStatus.battery}, ${this.deviceStatus.power}, ${this.deviceStatus.oscillation}, ${this.deviceStatus.chargingStatus}, ${this.deviceStatus.fanSpeed}), current:(${this.accessory.context.version}, ${this.Battery.BatteryLevel}, ${this.Fan.Active}, ${this.Fan.SwingMode}, ${this.Battery.ChargingState}, ${this.Fan.RotationSpeed})`)
 
     // Active
     this.Fan.Active = this.deviceStatus.power === 'on' ? this.hap.Characteristic.Active.ACTIVE : this.hap.Characteristic.Active.INACTIVE
@@ -219,11 +217,11 @@ export class Fan extends deviceBase {
     this.Fan.SwingMode = this.deviceStatus.oscillation === 'on'
       ? this.hap.Characteristic.SwingMode.SWING_ENABLED
       : this.hap.Characteristic.SwingMode.SWING_DISABLED
-    await this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
+    this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
 
     // RotationSpeed
-    this.Fan.RotationSpeed = this.deviceStatus.fanSpeed
-    await this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
+    this.Fan.RotationSpeed = this.deviceStatus.fanSpeed ?? 0
+    this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
 
     // ChargingState
     this.Battery.ChargingState = this.deviceStatus.chargingStatus === 'charging'
@@ -232,18 +230,18 @@ export class Fan extends deviceBase {
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.deviceStatus.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
 
     // Firmware Version
     if (this.deviceStatus.version) {
-      const version = this.deviceStatus.version.toString()
-      await this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
+      const version = this.deviceStatus.version as string
+      this.debugLog(`Firmware Version: ${version.replace(/^V|-.*$/g, '')}`)
       const deviceVersion = version.replace(/^V|-.*$/g, '') ?? '0.0.0'
       this.accessory
         .getService(this.hap.Service.AccessoryInformation)!
@@ -252,43 +250,43 @@ export class Fan extends deviceBase {
         .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
         .updateValue(deviceVersion)
       this.accessory.context.version = deviceVersion
-      await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+      this.debugSuccessLog(`version: ${this.accessory.context.version}`)
     }
   }
 
   async parseStatusWebhook(): Promise<void> {
-    await this.debugLog('parseStatusWebhook')
-    await this.debugLog(`(version, battery, powerState, oscillation, chargingStatus, fanSpeed) = Webhook:(${this.webhookContext.version}, ${this.webhookContext.battery}, ${this.webhookContext.powerState}, ${this.webhookContext.oscillation}, ${this.webhookContext.chargingStatus}, ${this.webhookContext.fanSpeed}), current:(${this.accessory.context.version}, ${this.Battery.BatteryLevel}, ${this.Fan.Active}, ${this.Fan.SwingMode}, ${this.Battery.ChargingState}, ${this.Fan.RotationSpeed})`)
+    this.debugLog('parseStatusWebhook')
+    this.debugLog(`(version, battery, powerState, oscillation, chargingStatus, fanSpeed) = Webhook:(${this.webhookContext.version}, ${this.webhookContext.battery}, ${this.webhookContext.powerState}, ${this.webhookContext.oscillation}, ${this.webhookContext.chargingStatus}, ${this.webhookContext.fanSpeed}), current:(${this.accessory.context.version}, ${this.Battery.BatteryLevel}, ${this.Fan.Active}, ${this.Fan.SwingMode}, ${this.Battery.ChargingState}, ${this.Fan.RotationSpeed})`)
 
     // Active
     this.Fan.Active = this.webhookContext.powerState === 'ON' ? this.hap.Characteristic.Active.ACTIVE : this.hap.Characteristic.Active.INACTIVE
-    await this.debugLog(`Active: ${this.Fan.Active}`)
+    this.debugLog(`Active: ${this.Fan.Active}`)
 
     // SwingMode
     this.Fan.SwingMode = this.webhookContext.oscillation === 'on'
       ? this.hap.Characteristic.SwingMode.SWING_ENABLED
       : this.hap.Characteristic.SwingMode.SWING_DISABLED
-    await this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
+    this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
 
     // RotationSpeed
-    this.Fan.RotationSpeed = this.webhookContext.fanSpeed
-    await this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
+    this.Fan.RotationSpeed = this.webhookContext.fanSpeed // ?? 0
+    this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
 
     // BatteryLevel
     this.Battery.BatteryLevel = this.webhookContext.battery
-    await this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
+    this.debugLog(`BatteryLevel: ${this.Battery.BatteryLevel}`)
 
     // StatusLowBattery
     this.Battery.StatusLowBattery = this.Battery.BatteryLevel < 10
       ? this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.hap.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL
-    await this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
+    this.debugLog(`StatusLowBattery: ${this.Battery.StatusLowBattery}`)
 
     // ChargingState
     this.Battery.ChargingState = this.webhookContext.chargingStatus === 'charging'
       ? this.hap.Characteristic.ChargingState.CHARGING
       : this.hap.Characteristic.ChargingState.NOT_CHARGING
-    await this.debugLog(`ChargingState: ${this.Battery.ChargingState}`)
+    this.debugLog(`ChargingState: ${this.Battery.ChargingState}`)
 
     // FirmwareVersion
     if (this.webhookContext.version) {
@@ -300,7 +298,7 @@ export class Fan extends deviceBase {
         .getCharacteristic(this.hap.Characteristic.FirmwareRevision)
         .updateValue(deviceVersion)
       this.accessory.context.version = deviceVersion
-      await this.debugSuccessLog(`version: ${this.accessory.context.version}`)
+      this.debugSuccessLog(`version: ${this.accessory.context.version}`)
     }
   }
 
@@ -309,102 +307,115 @@ export class Fan extends deviceBase {
    */
   async refreshStatus(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`refreshStatus enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLERefreshStatus()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIRefreshStatus()
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, refreshStatus will not happen.`)
     }
   }
 
   async BLERefreshStatus(): Promise<void> {
-    await this.debugLog('BLERefreshStatus')
-    const switchbot = await this.switchbotBLE()
-    if (switchbot === undefined) {
-      await this.BLERefreshConnection(switchbot)
+    this.debugLog('BLERefreshStatus')
+    const switchBotBLE = await this.switchbotBLE()
+    if (switchBotBLE === undefined) {
+      await this.BLERefreshConnection(switchBotBLE)
     } else {
       // Start to monitor advertisement packets
       (async () => {
         // Start to monitor advertisement packets
-        const serviceData = await this.monitorAdvertisementPackets(switchbot) as batteryCirculatorFanServiceData
+        const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as batteryCirculatorFanServiceData
         // Update HomeKit
         if (serviceData.model === SwitchBotBLEModel.Unknown && SwitchBotBLEModelName.Unknown) {
           this.serviceData = serviceData
-          await this.BLEparseStatus()
-          await this.updateHomeKitCharacteristics()
+          if (serviceData !== undefined || serviceData !== null) {
+            await this.BLEparseStatus()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`serviceData is either undefined or null, serviceData: ${JSON.stringify(serviceData)}`)
+            await this.BLERefreshConnection(switchBotBLE)
+          }
         } else {
-          await this.errorLog(`failed to get serviceData, serviceData: ${serviceData}`)
-          await this.BLERefreshConnection(switchbot)
+          this.errorLog(`failed to get serviceData, serviceData: ${JSON.stringify(serviceData)}`)
+          await this.BLERefreshConnection(switchBotBLE)
         }
       })()
     }
   }
 
   async registerPlatformBLE(): Promise<void> {
-    await this.debugLog('registerPlatformBLE')
-    if (this.config.options?.BLE) {
-      await this.debugLog('is listening to Platform BLE.')
+    this.debugLog('registerPlatformBLE')
+    if (this.config.options?.BLE && !this.device.disablePlatformBLE) {
+      this.debugLog('is listening to Platform BLE.')
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
         this.platform.bleEventHandler[this.device.bleMac] = async (context: batteryCirculatorFanServiceData) => {
           try {
-            await this.debugLog(`received BLE: ${JSON.stringify(context)}`)
             this.serviceData = context
-            await this.BLEparseStatus()
-            await this.updateHomeKitCharacteristics()
+            if (context !== undefined || context !== null) {
+              this.debugLog(`received BLE: ${JSON.stringify(context)}`)
+              await this.BLEparseStatus()
+              await this.updateHomeKitCharacteristics()
+            } else {
+              this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+              await this.BLERefreshConnection(context)
+            }
           } catch (e: any) {
-            await this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e}`)
+            this.errorLog(`failed to handle BLE. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
           }
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog('is not listening to Platform BLE')
+      this.debugLog('is not listening to Platform BLE')
     }
   }
 
   async openAPIRefreshStatus(): Promise<void> {
-    await this.debugLog('openAPIRefreshStatus')
+    this.debugLog('openAPIRefreshStatus')
     try {
-      const { body, statusCode } = await this.deviceRefreshStatus()
-      const deviceStatus: any = await body.json()
-      await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-      if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-        await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      const response = await this.deviceRefreshStatus()
+      const deviceStatus: any = response.body
+      this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+      if (await this.successfulStatusCodes(deviceStatus)) {
+        this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
         this.deviceStatus = deviceStatus.body
         await this.openAPIparseStatus()
         await this.updateHomeKitCharacteristics()
       } else {
-        await this.debugWarnLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        await this.debugWarnLog(statusCode, deviceStatus)
+        this.debugWarnLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
       }
     } catch (e: any) {
       await this.apiError(e)
-      await this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+      this.errorLog(`failed openAPIRefreshStatus with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
     }
   }
 
   async registerWebhook() {
     if (this.device.webhook) {
-      await this.debugLog('is listening webhook.')
+      this.debugLog('is listening webhook.')
       this.platform.webhookEventHandler[this.device.deviceId] = async (context: batteryCirculatorFanWebhookContext) => {
         try {
-          await this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
           this.webhookContext = context
-          await this.parseStatusWebhook()
-          await this.updateHomeKitCharacteristics()
+          if (context !== undefined || context !== null) {
+            this.debugLog(`received Webhook: ${JSON.stringify(context)}`)
+            await this.parseStatusWebhook()
+            await this.updateHomeKitCharacteristics()
+          } else {
+            this.errorLog(`context is either undefined or null, context: ${JSON.stringify(context)}`)
+          }
         } catch (e: any) {
-          await this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e}`)
+          this.errorLog(`failed to handle webhook. Received: ${JSON.stringify(context)} Error: ${e.message ?? e}`)
         }
       }
     } else {
-      await this.debugLog('is not listening webhook.')
+      this.debugLog('is not listening webhook.')
     }
   }
 
@@ -420,25 +431,25 @@ export class Fan extends deviceBase {
 
   async pushChanges(): Promise<void> {
     if (!this.device.enableCloudService && this.OpenAPI) {
-      await this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
+      this.errorLog(`pushChanges enableCloudService: ${this.device.enableCloudService}`)
     } else if (this.BLE) {
       await this.BLEpushChanges()
     } else if (this.OpenAPI && this.platform.config.credentials?.token) {
       await this.openAPIpushChanges()
       if (this.Fan.Active) {
-        await this.debugLog(`Active: ${this.Fan.Active}`)
+        this.debugLog(`Active: ${this.Fan.Active}`)
         // Push RotationSpeed Update
-        await this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
+        this.debugLog(`RotationSpeed: ${this.Fan.RotationSpeed}`)
         await this.pushRotationSpeedChanges()
         // Push SwingMode Update
-        await this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
+        this.debugLog(`SwingMode: ${this.Fan.SwingMode}`)
         await this.pushSwingModeChanges()
       } else {
-        await this.debugLog('BLE (RotationSpeed) & (SwingMode) changes will not happen, as the device is Off.')
+        this.debugLog('BLE (RotationSpeed) & (SwingMode) changes will not happen, as the device is Off.')
       }
     } else {
       await this.offlineOff()
-      await this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
+      this.debugWarnLog(`Connection Type: ${this.device.connectionType}, pushChanges will not happen.`)
     }
     // Refresh the status from the API
     interval(15000)
@@ -450,136 +461,133 @@ export class Fan extends deviceBase {
   }
 
   async BLEpushChanges(): Promise<void> {
-    await this.debugLog('BLEpushChanges')
+    this.debugLog('BLEpushChanges')
     if (this.Fan.Active !== this.accessory.context.Active) {
-      await this.debugLog(`BLEpushChanges On: ${this.Fan.Active} OnCached: ${this.accessory.context.Active}`)
-      const switchbot = await this.platform.connectBLE(this.accessory, this.device)
+      this.debugLog(`BLEpushChanges On: ${this.Fan.Active} OnCached: ${this.accessory.context.Active}`)
+      const switchBotBLE = await this.platform.connectBLE(this.accessory, this.device)
       try {
         const formattedDeviceId = formatDeviceIdAsMac(this.device.deviceId)
         this.device.bleMac = formattedDeviceId
-        await this.debugLog(`bleMac: ${this.device.bleMac}`)
-        if (switchbot !== false) {
-          switchbot
+        this.debugLog(`bleMac: ${this.device.bleMac}`)
+        if (switchBotBLE !== false) {
+          switchBotBLE
             .discover({ model: this.device.bleModel, id: this.device.bleMac })
-            .then(async (device_list: any) => {
+            .then(async (device_list: SwitchbotDevice[]) => {
               return await this.retryBLE({
-                max: await this.maxRetryBLE(),
+                max: this.maxRetryBLE(),
                 fn: async () => {
                   if (this.Fan.Active) {
-                    return await device_list[0].turnOn({ id: this.device.bleMac })
+                    return await (device_list[0] as any).turnOn()
                   } else {
-                    return await device_list[0].turnOff({ id: this.device.bleMac })
+                    return await (device_list[0] as any).turnOff()
                   }
                 },
               })
             })
             .then(async () => {
-              await this.successLog(`Active: ${this.Fan.Active} sent over SwitchBot BLE,  sent successfully`)
+              this.successLog(`Active: ${this.Fan.Active} sent over SwitchBot BLE, sent successfully`)
               await this.updateHomeKitCharacteristics()
             })
             .catch(async (e: any) => {
               await this.apiError(e)
-              await this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+              this.errorLog(`failed BLEpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
               await this.BLEPushConnection()
             })
         } else {
-          await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+          this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${JSON.stringify(switchBotBLE)}`)
           await this.BLEPushConnection()
         }
       } catch (error) {
-        await this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
+        this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
       }
     } else {
-      await this.debugLog(`No change (BLEpushChanges), Active: ${this.Fan.Active}, ActiveCached: ${this.accessory.context.Active}`)
+      this.debugLog(`No change (BLEpushChanges), Active: ${this.Fan.Active}, ActiveCached: ${this.accessory.context.Active}`)
     }
   }
 
   async openAPIpushChanges() {
-    await this.debugLog('openAPIpushChanges')
+    this.debugLog('openAPIpushChanges')
     if (this.Fan.Active !== this.accessory.context.Active) {
       const command = this.Fan.Active ? 'turnOn' : 'turnOff'
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command: `${command}`,
         parameter: 'default',
         commandType: 'command',
-      })
-      await this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
+      }
+      this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
         await this.apiError(e)
-        await this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+        this.errorLog(`failed openAPIpushChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
       }
     } else {
-      await this.debugLog(`No changes (openAPIpushChanges), Active: ${this.Fan.Active}, ActiveCached: ${this.accessory.context.Active}`)
+      this.debugLog(`No changes (openAPIpushChanges), Active: ${this.Fan.Active}, ActiveCached: ${this.accessory.context.Active}`)
     }
   }
 
   async pushRotationSpeedChanges(): Promise<void> {
-    await this.debugLog('pushRotationSpeedChanges')
+    this.debugLog('pushRotationSpeedChanges')
     if (this.Fan.SwingMode !== this.accessory.context.SwingMode) {
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command: 'setWindSpeed',
         parameter: `${this.Fan.RotationSpeed}`,
         commandType: 'command',
-      })
-      await this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
+      }
+      this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
         await this.apiError(e)
-        await this.errorLog(`failed pushRotationSpeedChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+        this.errorLog(`failed pushRotationSpeedChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
       }
     } else {
-      await this.debugLog(`No changes (pushRotationSpeedChanges), RotationSpeed: ${this.Fan.RotationSpeed}, RotationSpeedCached: ${this.accessory.context.RotationSpeed}`)
+      this.debugLog(`No changes (pushRotationSpeedChanges), RotationSpeed: ${this.Fan.RotationSpeed}, RotationSpeedCached: ${this.accessory.context.RotationSpeed}`)
     }
   }
 
   async pushSwingModeChanges(): Promise<void> {
-    await this.debugLog('pushSwingModeChanges')
+    this.debugLog('pushSwingModeChanges')
     if (this.Fan.SwingMode !== this.accessory.context.SwingMode) {
       const parameter = this.Fan.SwingMode === this.hap.Characteristic.SwingMode.SWING_ENABLED ? 'on' : 'off'
-      const bodyChange = JSON.stringify({
+      const bodyChange: bodyChange = {
         command: 'setOscillation',
         parameter: `${parameter}`,
         commandType: 'command',
-      })
-      await this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
+      }
+      this.debugLog(`SwitchBot OpenAPI bodyChange: ${JSON.stringify(bodyChange)}`)
       try {
-        const { body, statusCode } = await this.pushChangeRequest(bodyChange)
-        const deviceStatus: any = await body.json()
-        await this.debugLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
-        if (await this.successfulStatusCodes(statusCode, deviceStatus)) {
-          await this.debugSuccessLog(`statusCode: ${statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        const response = await this.pushChangeRequest(bodyChange)
+        const deviceStatus: any = response.body
+        this.debugLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
+        if (await this.successfulStatusCodes(deviceStatus)) {
+          this.debugSuccessLog(`statusCode: ${deviceStatus.statusCode}, deviceStatus: ${JSON.stringify(deviceStatus)}`)
           await this.updateHomeKitCharacteristics()
         } else {
-          await this.statusCode(statusCode)
           await this.statusCode(deviceStatus.statusCode)
         }
       } catch (e: any) {
         await this.apiError(e)
-        await this.errorLog(`failed pushSwingModeChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
+        this.errorLog(`failed pushSwingModeChanges with ${this.device.connectionType} Connection, Error Message: ${JSON.stringify(e.message)}`)
       }
     } else {
-      await this.debugLog(`No changes (pushSwingModeChanges), SwingMode: ${this.Fan.SwingMode}, SwingModeCached: ${this.accessory.context.SwingMode}`)
+      this.debugLog(`No changes (pushSwingModeChanges), SwingMode: ${this.Fan.SwingMode}, SwingModeCached: ${this.accessory.context.SwingMode}`)
     }
   }
 
@@ -588,9 +596,9 @@ export class Fan extends deviceBase {
    */
   async ActiveSet(value: CharacteristicValue): Promise<void> {
     if (this.Fan.Active !== this.accessory.context.Active) {
-      await this.infoLog(`Set Active: ${value}`)
+      this.infoLog(`Set Active: ${value}`)
     } else {
-      await this.debugLog(`No Changes, Active: ${value}`)
+      this.debugLog(`No Changes, Active: ${value}`)
     }
 
     this.Fan.Active = value
@@ -602,9 +610,9 @@ export class Fan extends deviceBase {
    */
   async RotationSpeedSet(value: CharacteristicValue): Promise<void> {
     if (this.Fan.RotationSpeed !== this.accessory.context.RotationSpeed) {
-      await this.infoLog(`Set RotationSpeed ${value}`)
+      this.infoLog(`Set RotationSpeed ${value}`)
     } else {
-      await this.debugLog(`No Changes, RotationSpeed: ${value}`)
+      this.debugLog(`No Changes, RotationSpeed: ${value}`)
     }
 
     this.Fan.RotationSpeed = value
@@ -616,9 +624,9 @@ export class Fan extends deviceBase {
    */
   async SwingModeSet(value: CharacteristicValue): Promise<void> {
     if (this.Fan.SwingMode !== this.accessory.context.SwingMode) {
-      await this.infoLog(`Set SwingMode ${value}`)
+      this.infoLog(`Set SwingMode ${value}`)
     } else {
-      await this.debugLog(`No Changes, SwingMode: ${value}`)
+      this.debugLog(`No Changes, SwingMode: ${value}`)
     }
 
     this.Fan.SwingMode = value
@@ -630,9 +638,9 @@ export class Fan extends deviceBase {
    */
   async OnSet(value: CharacteristicValue): Promise<void> {
     if (this.LightBulb.On !== this.accessory.context.On) {
-      await this.infoLog(`Set On: ${value}`)
+      this.infoLog(`Set On: ${value}`)
     } else {
-      await this.debugLog(`No Changes, On: ${value}`)
+      this.debugLog(`No Changes, On: ${value}`)
     }
 
     this.LightBulb.On = value
@@ -644,7 +652,7 @@ export class Fan extends deviceBase {
    */
   async BrightnessSet(value: CharacteristicValue): Promise<void> {
     if (this.LightBulb.On && (this.LightBulb.Brightness !== this.accessory.context.Brightness)) {
-      await this.infoLog(`Set Brightness: ${value}`)
+      this.infoLog(`Set Brightness: ${value}`)
     } else {
       if (this.LightBulb.On) {
         this.debugLog(`No Changes, Brightness: ${value}`)
@@ -678,15 +686,15 @@ export class Fan extends deviceBase {
 
   async BLEPushConnection() {
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Push Changes')
+      this.warnLog('Using OpenAPI Connection to Push Changes')
       await this.openAPIpushChanges()
     }
   }
 
-  async BLERefreshConnection(switchbot: any): Promise<void> {
-    await this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
+  async BLERefreshConnection(switchbot: SwitchBotBLE): Promise<void> {
+    this.errorLog(`wasn't able to establish BLE Connection, node-switchbot: ${switchbot}`)
     if (this.platform.config.credentials?.token && this.device.connectionType === 'BLE/OpenAPI') {
-      await this.warnLog('Using OpenAPI Connection to Refresh Status')
+      this.warnLog('Using OpenAPI Connection to Refresh Status')
       await this.openAPIRefreshStatus()
     }
   }
