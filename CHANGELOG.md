@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. This project uses [Semantic Versioning](https://semver.org/)
 
+## [3.8.3](https://github.com/nzws/homebridge-switchbot/releases/tag/v3.8.3) (2025-11-28)
+
+## What's Changed
+* Add proper SwitchBot Hub 3 support with latest node-switchbot dependency  by @Copilot in https://github.com/nzws/homebridge-switchbot/pull/1264
+* Fix error logging  by @Dave Nicolson in https://github.com/nzws/homebridge-switchbot/pull/1266
+* Add comprehensive GitHub Copilot instructions for homebridge-switchbot development  by @Copilot in https://github.com/nzws/homebridge-switchbot/pull/1262
+* update dependencies by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/commit/d8878d3
+* v4.3.1  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1179
+* v4.3.0  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1170
+* v4.2.0  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1168
+* v4.1.7  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1151
+* v4.1.6  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1149
+* v4.1.5 by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/commit/1438ac5
+* v4.1.8  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1114
+* v4.1.3  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1105
+* v4.1.2 by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/commit/da56779
+* v4.1.1 by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/commit/b73d9cd
+* Fix max retry  by @Dave Nicolson in https://github.com/nzws/homebridge-switchbot/pull/1088
+* v4.1.0  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1085
+* fix `K10+ Pro` type by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/commit/301ecf6
+* v4.0.0  by @Donavan Becker in https://github.com/nzws/homebridge-switchbot/pull/1070
+
+**Full Changelog**: https://github.com/nzws/homebridge-switchbot/compare/3.8.2-patch.3...v3.8.3
+
 ## [4.3.1](https://github.com/OpenWonderLabs/homebridge-switchbot/releases/tag/v4.3.1) (2025-03-04)
 
 # *No New Releases During Lent*
