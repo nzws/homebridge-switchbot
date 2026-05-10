@@ -3,12 +3,8 @@
  * hub.ts: @switchbot/homebridge-switchbot.
  */
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge'
-import type { device, hub2ServiceData, hub3ServiceData, hub2Status, hub2WebhookContext, SwitchBotBLE } from 'node-switchbot'
-
-import type { SwitchBotPlatform } from '../platform.js'
-import type { devicesConfig, hubConfig } from '../settings.js'
-
 import { Units } from 'homebridge'
+import type { device, hub2ServiceData, hub2Status, hub2WebhookContext, hub3ServiceData, SwitchBotBLE } from 'node-switchbot'
 /*
 * For Testing Locally:
 * import { SwitchBotBLEModel, SwitchBotBLEModelName } from '/Users/Shared/GitHub/OpenWonderLabs/node-switchbot/dist/index.js';
@@ -16,8 +12,29 @@ import { Units } from 'homebridge'
 import { SwitchBotBLEModel, SwitchBotBLEModelName } from 'node-switchbot'
 import { interval, skipWhile, Subject } from 'rxjs'
 
+import type { SwitchBotPlatform } from '../platform.js'
+import type { devicesConfig, hubConfig } from '../settings.js'
 import { convertUnits, formatDeviceIdAsMac, validHumidity } from '../utils.js'
 import { deviceBase } from './device.js'
+
+/**
+ * Hub sensor data structure
+ * Represents the sensor readings that can be at root level (Hub 2) or nested (Hub 3)
+ */
+interface HubSensorData {
+  temperature: number
+  humidity: number
+  lightLevel: number
+}
+
+/**
+ * Extended Hub status type that supports both Hub 2 and Hub 3 API response structures
+ * Hub 2 returns sensor data at root level
+ * Hub 3 returns sensor data in a nested sensorData object
+ */
+type HubStatus = hub2Status & {
+  sensorData?: HubSensorData
+}
 
 export class Hub extends deviceBase {
   // Services
@@ -40,7 +57,7 @@ export class Hub extends deviceBase {
   }
 
   // OpenAPI
-  deviceStatus!: hub2Status
+  deviceStatus!: HubStatus
 
   // Webhook
   webhookContext!: hub2WebhookContext
@@ -201,17 +218,26 @@ export class Hub extends deviceBase {
 
   async openAPIparseStatus(): Promise<void> {
     this.debugLog('openAPIparseStatus')
-    this.debugLog(`(temperature, humidity, lightLevel) = OpenAPI:(${this.deviceStatus.temperature}, ${this.deviceStatus.humidity}, ${this.deviceStatus.lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
+    this.debugLog(`Device Type: ${this.device.deviceType}, Raw deviceStatus: ${JSON.stringify(this.deviceStatus)}`)
+
+    // Hub 3 returns sensor data in a nested sensorData object, while Hub 2 returns it at the root level
+    const sensorData: HubSensorData = this.deviceStatus.sensorData ?? this.deviceStatus
+    this.debugLog(`Using sensorData from: ${this.deviceStatus.sensorData ? 'nested sensorData object (Hub 3)' : 'root level (Hub 2)'}`)
+
+    const temperature = sensorData.temperature
+    const humidity = sensorData.humidity
+    const lightLevel = sensorData.lightLevel
+    this.debugLog(`(temperature, humidity, lightLevel) = OpenAPI:(${temperature}, ${humidity}, ${lightLevel}), current:(${this.TemperatureSensor?.CurrentTemperature}, ${this.HumiditySensor?.CurrentRelativeHumidity}, ${this.LightSensor?.CurrentAmbientLightLevel})`)
 
     // CurrentRelativeHumidity
     if (!(this.device as hubConfig).hide_humidity && this.HumiditySensor?.Service) {
-      this.HumiditySensor.CurrentRelativeHumidity = this.deviceStatus.humidity
+      this.HumiditySensor.CurrentRelativeHumidity = humidity
       this.debugLog(`CurrentRelativeHumidity: ${this.HumiditySensor.CurrentRelativeHumidity}%`)
     }
 
     // CurrentTemperature
     if (!(this.device as hubConfig).hide_temperature && this.TemperatureSensor?.Service) {
-      this.TemperatureSensor.CurrentTemperature = this.deviceStatus.temperature
+      this.TemperatureSensor.CurrentTemperature = temperature
       this.debugLog(`CurrentTemperature: ${this.TemperatureSensor.CurrentTemperature}°c`)
     }
 
@@ -219,9 +245,8 @@ export class Hub extends deviceBase {
     if (!(this.device as hubConfig).hide_lightsensor && this.LightSensor?.Service) {
       const set_minLux = (this.device as hubConfig).set_minLux ?? 1
       const set_maxLux = (this.device as hubConfig).set_maxLux ?? 6001
-      const lightLevel = this.deviceStatus.lightLevel
       this.LightSensor.CurrentAmbientLightLevel = this.getLightLevel(lightLevel, set_minLux, set_maxLux, 19)
-      this.debugLog(`LightLevel: ${this.deviceStatus.lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
+      this.debugLog(`LightLevel: ${lightLevel}, CurrentAmbientLightLevel: ${this.LightSensor!.CurrentAmbientLightLevel}`)
     }
 
     // Firmware Version
@@ -296,8 +321,8 @@ export class Hub extends deviceBase {
         // Start to monitor advertisement packets
         const serviceData = await this.monitorAdvertisementPackets(switchBotBLE) as hub2ServiceData | hub3ServiceData
         // Update HomeKit
-        if ((serviceData.model === SwitchBotBLEModel.Hub2 && serviceData.modelName === SwitchBotBLEModelName.Hub2) || 
-            (serviceData.model === SwitchBotBLEModel.Hub3 && serviceData.modelName === SwitchBotBLEModelName.Hub3)) {
+        if ((serviceData.model === SwitchBotBLEModel.Hub2 && serviceData.modelName === SwitchBotBLEModelName.Hub2)
+          || (serviceData.model === SwitchBotBLEModel.Hub3 && serviceData.modelName === SwitchBotBLEModelName.Hub3)) {
           this.serviceData = serviceData
           if (serviceData !== undefined || serviceData !== null) {
             await this.BLEparseStatus()

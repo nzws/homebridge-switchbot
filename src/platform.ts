@@ -1,10 +1,15 @@
+import { readFileSync } from 'node:fs'
 /* Copyright(C) 2017-2024, donavanbecker (https://github.com/donavanbecker). All rights reserved.
  *
  * platform.ts: @switchbot/homebridge-switchbot platform class.
  */
 import type { Server } from 'node:http'
+import { argv } from 'node:process'
 
+import asyncmqtt from 'async-mqtt'
+import fakegato from 'fakegato-history'
 import type { API, DynamicPlatformPlugin, Logging, PlatformAccessory } from 'homebridge'
+import { EveHomeKitTypes } from 'homebridge-lib/EveHomeKitTypes'
 import type { MqttClient } from 'mqtt'
 /*
 * For Testing Locally:
@@ -12,15 +17,6 @@ import type { MqttClient } from 'mqtt'
 * import { LogLevel, SwitchBotBLE, SwitchBotModel, SwitchBotOpenAPI } from '/Users/Shared/GitHub/OpenWonderLabs/node-switchbot/dist/index.js';
 */
 import type { blindTilt, bodyChange, curtain, curtain3, device, deviceStatusRequest, irdevice } from 'node-switchbot'
-
-import type { blindTiltConfig, curtainConfig, devicesConfig, irDevicesConfig, options, SwitchBotPlatformConfig } from './settings.js'
-
-import { readFileSync } from 'node:fs'
-import { argv } from 'node:process'
-
-import asyncmqtt from 'async-mqtt'
-import fakegato from 'fakegato-history'
-import { EveHomeKitTypes } from 'homebridge-lib/EveHomeKitTypes'
 import { LogLevel, SwitchBotBLE, SwitchBotModel, SwitchBotOpenAPI } from 'node-switchbot'
 import { queueScheduler } from 'rxjs'
 
@@ -30,6 +26,7 @@ import { CeilingLight } from './device/ceilinglight.js'
 import { ColorBulb } from './device/colorbulb.js'
 import { Contact } from './device/contact.js'
 import { Curtain } from './device/curtain.js'
+import { AirPurifier as AirPurifierDevice } from './device/airpurifier.js'
 import { Fan } from './device/fan.js'
 import { Hub } from './device/hub.js'
 import { Humidifier } from './device/humidifier.js'
@@ -41,6 +38,7 @@ import { MeterPlus } from './device/meterplus.js'
 import { MeterPro } from './device/meterpro.js'
 import { Motion } from './device/motion.js'
 import { Plug } from './device/plug.js'
+import { Presence } from './device/presence.js'
 import { RelaySwitch } from './device/relayswitch.js'
 import { RobotVacuumCleaner } from './device/robotvacuumcleaner.js'
 import { WaterDetector } from './device/waterdetector.js'
@@ -53,6 +51,7 @@ import { Others } from './irdevice/other.js'
 import { TV } from './irdevice/tv.js'
 import { VacuumCleaner } from './irdevice/vacuumcleaner.js'
 import { WaterHeater } from './irdevice/waterheater.js'
+import type { blindTiltConfig, curtainConfig, devicesConfig, irDevicesConfig, options, SwitchBotPlatformConfig } from './settings.js'
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js'
 import { formatDeviceIdAsMac, isBlindTiltDevice, isCurtainDevice, safeStringify, sleep } from './utils.js'
 
@@ -358,7 +357,7 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
   /**
    * Verify the config passed to the plugin is valid
    */
-  async verifyConfig() {
+  verifyConfig() {
     this.debugLog('Verifying Config')
     this.config = this.config || {}
     this.config.options = this.config.options || {}
@@ -582,6 +581,7 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       'Humidifier': this.createHumidifier.bind(this),
       'Humidifier2': this.createHumidifier.bind(this),
       'Hub 2': this.createHub2.bind(this),
+      'Hub Mini 2': this.createHub2.bind(this),
       'Hub 3': this.createHub2.bind(this),
       'Bot': this.createBot.bind(this),
       'Relay Switch 1': this.createRelaySwitch.bind(this),
@@ -594,6 +594,7 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       'WoIOSensor': this.createIOSensor.bind(this),
       'Water Detector': this.createWaterDetector.bind(this),
       'Motion Sensor': this.createMotion.bind(this),
+      'Presence Sensor': this.createPresence.bind(this),
       'Contact Sensor': this.createContact.bind(this),
       'Curtain': this.createCurtain.bind(this),
       'Curtain3': this.createCurtain.bind(this),
@@ -603,8 +604,11 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       'Plug': this.createPlug.bind(this),
       'Plug Mini (US)': this.createPlug.bind(this),
       'Plug Mini (JP)': this.createPlug.bind(this),
+      'Plug Mini (EU)': this.createPlug.bind(this),
       'Smart Lock': this.createLock.bind(this),
       'Smart Lock Pro': this.createLock.bind(this),
+      'Smart Lock Ultra': this.createLock.bind(this),
+      'Lock Ultra': this.createLock.bind(this),
       'Color Bulb': this.createColorBulb.bind(this),
       'K10+': this.createRobotVacuumCleaner.bind(this),
       'K10+ Pro': this.createRobotVacuumCleaner.bind(this),
@@ -617,6 +621,12 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       'Ceiling Light Pro': this.createCeilingLight.bind(this),
       'Strip Light': this.createStripLight.bind(this),
       'Battery Circulator Fan': this.createFan.bind(this),
+      'Air Purifier': this.createAirPurifierDevice.bind(this),
+      'Air Purifier Table': this.createAirPurifierDevice.bind(this),
+      'Air Purifier VOC': this.createAirPurifierDevice.bind(this),
+      'Air Purifier Table VOC': this.createAirPurifierDevice.bind(this),
+      'Air Purifier PM2.5': this.createAirPurifierDevice.bind(this),
+      'Air Purifier Table PM2.5': this.createAirPurifierDevice.bind(this),
     }
 
     if (deviceTypeHandlers[device.deviceType!]) {
@@ -1296,6 +1306,68 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
     }
   }
 
+  private async createPresence(device: device & devicesConfig) {
+    const uuid = this.api.hap.uuid.generate(`${device.deviceId}-${device.deviceType}`)
+
+    // see if an accessory with the same uuid has already been registered and restored from
+    // the cached devices we stored in the `configureAccessory` method above
+    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid)
+
+    if (existingAccessory) {
+      // the accessory already exists
+      if (await this.registerDevice(device)) {
+        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
+        existingAccessory.context.device = device
+        existingAccessory.context.deviceId = device.deviceId
+        existingAccessory.context.deviceType = device.deviceType
+        existingAccessory.context.model = SwitchBotModel.PresenceSensor
+        existingAccessory.displayName = device.configDeviceName
+          ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+          : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
+        existingAccessory.context.connectionType = await this.connectionType(device)
+        existingAccessory.context.version = device.firmware ?? device.version ?? this.version ?? '0.0.0'
+        this.infoLog(`Restoring existing accessory from cache: ${existingAccessory.displayName} deviceId: ${device.deviceId}`)
+        this.api.updatePlatformAccessories([existingAccessory])
+        // create the accessory handler for the restored accessory
+        // this is imported from `platformAccessory.ts`
+        new Presence(this, existingAccessory, device)
+        this.debugLog(`${device.deviceType} uuid: ${device.deviceId}-${device.deviceType}, (${existingAccessory.UUID})`)
+      } else {
+        this.unregisterPlatformAccessories(existingAccessory)
+      }
+    } else if (await this.registerDevice(device)) {
+      // create a new accessory
+      const accessory = new this.api.platformAccessory(device.configDeviceName
+        ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+        : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName), uuid)
+
+      // store a copy of the device object in the `accessory.context`
+      // the `context` property can be used to store any data about the accessory you may need
+      accessory.context.device = device
+      accessory.context.deviceId = device.deviceId
+      accessory.context.deviceType = device.deviceType
+      accessory.context.model = SwitchBotModel.PresenceSensor
+      accessory.displayName = device.configDeviceName
+        ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+        : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
+      accessory.context.connectionType = await this.connectionType(device)
+      accessory.context.connectionType = await this.connectionType(device)
+      accessory.context.version = device.firmware ?? device.version ?? this.version ?? '0.0.0'
+      const newOrExternal = !device.external ? 'Adding new' : 'Loading external'
+      this.infoLog(`${newOrExternal} accessory: ${accessory.displayName} deviceId: ${device.deviceId}`)
+      // create the accessory handler for the newly create accessory
+      // this is imported from `platformAccessory.ts`
+      new Presence(this, accessory, device)
+      this.debugLog(`${device.deviceType} uuid: ${device.deviceId}-${device.deviceType}, (${accessory.UUID})`)
+
+      // publish device externally or link the accessory to your platform
+      this.externalOrPlatform(device, accessory)
+      this.accessories.push(accessory)
+    } else {
+      this.debugLog(`Device not registered: ${device.deviceName} ${device.deviceType} deviceId: ${device.deviceId}`)
+    }
+  }
+
   private async createContact(device: device & devicesConfig) {
     const uuid = this.api.hap.uuid.generate(`${device.deviceId}-${device.deviceType}`)
 
@@ -1530,7 +1602,9 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
           ? SwitchBotModel.PlugMiniUS
           : device.deviceType === 'Plug Mini (JP)'
             ? SwitchBotModel.PlugMiniJP
-            : SwitchBotModel.Plug
+            : device.deviceType === 'Plug Mini (EU)'
+              ? SwitchBotModel.PlugMiniEU
+              : SwitchBotModel.Plug
         existingAccessory.displayName = device.configDeviceName
           ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
           : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
@@ -1560,7 +1634,9 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
         ? SwitchBotModel.PlugMiniUS
         : device.deviceType === 'Plug Mini (JP)'
           ? SwitchBotModel.PlugMiniJP
-          : SwitchBotModel.Plug
+          : device.deviceType === 'Plug Mini (EU)'
+            ? SwitchBotModel.PlugMiniEU
+            : SwitchBotModel.Plug
       accessory.displayName = device.configDeviceName
         ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
         : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
@@ -1596,7 +1672,7 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
         existingAccessory.context.device = device
         existingAccessory.context.deviceId = device.deviceId
         existingAccessory.context.deviceType = device.deviceType
-        existingAccessory.context.model = device.deviceType === 'Smart Lock Pro' ? SwitchBotModel.LockPro : SwitchBotModel.Lock
+        existingAccessory.context.model = device.deviceType === 'Smart Lock Pro' ? SwitchBotModel.LockPro : (device.deviceType === 'Smart Lock Ultra' || device.deviceType === 'Lock Ultra') ? SwitchBotModel.LockUltra : SwitchBotModel.Lock
         existingAccessory.displayName = device.configDeviceName
           ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
           : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
@@ -1622,7 +1698,7 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       accessory.context.device = device
       accessory.context.deviceId = device.deviceId
       accessory.context.deviceType = device.deviceType
-      accessory.context.model = device.deviceType === 'Smart Lock Pro' ? SwitchBotModel.LockPro : SwitchBotModel.Lock
+      accessory.context.model = device.deviceType === 'Smart Lock Pro' ? SwitchBotModel.LockPro : (device.deviceType === 'Smart Lock Ultra' || device.deviceType === 'Lock Ultra') ? SwitchBotModel.LockUltra : SwitchBotModel.Lock
       accessory.displayName = device.configDeviceName
         ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
         : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
@@ -1882,6 +1958,67 @@ export class SwitchBotPlatform implements DynamicPlatformPlugin {
       // create the accessory handler for the newly create accessory
       // this is imported from `platformAccessory.ts`
       new Fan(this, accessory, device)
+      this.debugLog(`${device.deviceType} uuid: ${device.deviceId}-${device.deviceType}, (${accessory.UUID})`)
+
+      // publish device externally or link the accessory to your platform
+      this.externalOrPlatform(device, accessory)
+      this.accessories.push(accessory)
+    } else {
+      this.debugLog(`Device not registered: ${device.deviceName} ${device.deviceType} deviceId: ${device.deviceId}`)
+    }
+  }
+
+  private async createAirPurifierDevice(device: device & devicesConfig) {
+    const uuid = this.api.hap.uuid.generate(`${device.deviceId}-${device.deviceType}`)
+
+    // see if an accessory with the same uuid has already been registered and restored from
+    // the cached devices we stored in the `configureAccessory` method above
+    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid)
+
+    if (existingAccessory) {
+      // the accessory already exists
+      if (await this.registerDevice(device)) {
+        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
+        existingAccessory.context.device = device
+        existingAccessory.context.deviceId = device.deviceId
+        existingAccessory.context.deviceType = device.deviceType
+        existingAccessory.context.model = device.deviceType?.includes('Table') ? SwitchBotModel.AirPurifierTable : SwitchBotModel.AirPurifier
+        existingAccessory.displayName = device.configDeviceName
+          ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+          : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
+        existingAccessory.context.connectionType = await this.connectionType(device)
+        existingAccessory.context.version = device.firmware ?? device.version ?? this.version ?? '0.0.0'
+        this.infoLog(`Restoring existing accessory from cache: ${existingAccessory.displayName} deviceId: ${device.deviceId}`)
+        this.api.updatePlatformAccessories([existingAccessory])
+        // create the accessory handler for the restored accessory
+        // this is imported from `platformAccessory.ts`
+        new AirPurifierDevice(this, existingAccessory, device)
+        this.debugLog(`${device.deviceType} uuid: ${device.deviceId}-${device.deviceType}, (${existingAccessory.UUID})`)
+      } else {
+        this.unregisterPlatformAccessories(existingAccessory)
+      }
+    } else if (await this.registerDevice(device)) {
+      // create a new accessory
+      const accessory = new this.api.platformAccessory(device.configDeviceName
+        ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+        : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName), uuid)
+
+      // store a copy of the device object in the `accessory.context`
+      // the `context` property can be used to store any data about the accessory you may need
+      accessory.context.device = device
+      accessory.context.deviceId = device.deviceId
+      accessory.context.deviceType = device.deviceType
+      accessory.context.model = device.deviceType?.includes('Table') ? SwitchBotModel.AirPurifierTable : SwitchBotModel.AirPurifier
+      accessory.displayName = device.configDeviceName
+        ? await this.validateAndCleanDisplayName(device.configDeviceName, 'configDeviceName', device.configDeviceName)
+        : await this.validateAndCleanDisplayName(device.deviceName, 'deviceName', device.deviceName)
+      accessory.context.connectionType = await this.connectionType(device)
+      accessory.context.version = device.firmware ?? device.version ?? this.version ?? '0.0.0'
+      const newOrExternal = !device.external ? 'Adding new' : 'Loading external'
+      this.infoLog(`${newOrExternal} accessory: ${accessory.displayName} deviceId: ${device.deviceId}`)
+      // create the accessory handler for the newly create accessory
+      // this is imported from `platformAccessory.ts`
+      new AirPurifierDevice(this, accessory, device)
       this.debugLog(`${device.deviceType} uuid: ${device.deviceId}-${device.deviceType}, (${accessory.UUID})`)
 
       // publish device externally or link the accessory to your platform

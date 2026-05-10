@@ -10,24 +10,18 @@ export default antfu(
     },
     rules: {
       'curly': ['error', 'multi-line'],
-      'import/extensions': ['error', 'ignorePackages'],
-      'import/order': 0,
       'jsdoc/check-alignment': 'error',
       'jsdoc/check-line-alignment': 'error',
       'perfectionist/sort-exports': 'error',
       'perfectionist/sort-imports': [
         'error',
         {
+          // Use groups supported by the installed perfectionist version.
           groups: [
-            'builtin-type',
-            'external-type',
-            'internal-type',
-            ['parent-type', 'sibling-type', 'index-type'],
             'builtin',
             'external',
             'internal',
             ['parent', 'sibling', 'index'],
-            'object',
             'unknown',
           ],
           order: 'asc',

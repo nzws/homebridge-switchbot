@@ -3,17 +3,15 @@
  * device.ts: @switchbot/homebridge-switchbot.
  */
 
+import { hostname } from 'node:os'
+
 import type { API, CharacteristicValue, HAP, Logging, PlatformAccessory, Service } from 'homebridge'
 import type { MqttClient } from 'mqtt'
 import type { ad, bodyChange, device, deviceStatus, deviceStatusRequest, pushResponse, SwitchBotBLE } from 'node-switchbot'
+import { SwitchBotBLEModel, SwitchBotBLEModelFriendlyName, SwitchBotBLEModelName, SwitchBotModel } from 'node-switchbot'
 
 import type { SwitchBotPlatform } from '../platform.js'
 import type { blindTiltConfig, botConfig, ceilingLightConfig, colorBulbConfig, contactConfig, curtainConfig, devicesConfig, hubConfig, humidifierConfig, indoorOutdoorSensorConfig, lockConfig, meterConfig, motionConfig, plugConfig, relaySwitch1Config, relaySwitch1PMConfig, stripLightConfig, SwitchBotPlatformConfig, waterDetectorConfig } from '../settings.js'
-
-import { hostname } from 'node:os'
-
-import { SwitchBotBLEModel, SwitchBotBLEModelFriendlyName, SwitchBotBLEModelName, SwitchBotModel } from 'node-switchbot'
-
 import { formatDeviceIdAsMac, safeStringify, sleep } from '../utils.js'
 
 export abstract class deviceBase {
@@ -200,6 +198,7 @@ export abstract class deviceBase {
       case 'Plug':
       case 'Plug Mini (US)':
       case 'Plug Mini (JP)':
+      case 'Plug Mini (EU)':
         deviceSpecificConfig = device as plugConfig
         break
       case 'Color Bulb':
@@ -217,6 +216,10 @@ export abstract class deviceBase {
         deviceSpecificConfig = device as lockConfig
         break
       case 'Hub 2':
+      case 'Hub Mini 2':
+        deviceSpecificConfig = device as hubConfig
+        break
+      case 'Hub 3':
         deviceSpecificConfig = device as hubConfig
         break
       default:
@@ -291,10 +294,10 @@ export abstract class deviceBase {
       this.debugLog(`bleMac: ${this.device.bleMac}`)
       this.historyService = device.history
         ? new this.platform.fakegatoAPI('room', accessory, {
-          log: this.platform.log,
-          storage: 'fs',
-          filename: `${hostname().split('.')[0]}_${this.device.bleMac}_persist.json`,
-        })
+            log: this.platform.log,
+            storage: 'fs',
+            filename: `${hostname().split('.')[0]}_${this.device.bleMac}_persist.json`,
+          })
         : null
     } catch (error) {
       this.errorLog(`failed to format device ID as MAC, Error: ${error}`)
@@ -448,6 +451,13 @@ export abstract class deviceBase {
         bleModelName: SwitchBotBLEModelName.Hub2,
         bleModelFriendlyName: SwitchBotBLEModelFriendlyName.Hub2,
       },
+      'Hub Mini 2': {
+        // Hub Mini 2 uses Hub2 model mapping as it shares the same API interface and capabilities
+        model: SwitchBotModel.Hub2,
+        bleModel: SwitchBotBLEModel.Hub2,
+        bleModelName: SwitchBotBLEModelName.Hub2,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.Hub2,
+      },
       'Hub 3': {
         model: SwitchBotModel.Hub3,
         bleModel: SwitchBotBLEModel.Hub3,
@@ -574,6 +584,12 @@ export abstract class deviceBase {
         bleModelName: SwitchBotBLEModelName.PlugMini,
         bleModelFriendlyName: SwitchBotBLEModelFriendlyName.PlugMini,
       },
+      'Plug Mini (EU)': {
+        model: SwitchBotModel.PlugMiniEU,
+        bleModel: SwitchBotBLEModel.PlugMiniEU,
+        bleModelName: SwitchBotBLEModelName.PlugMini,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.PlugMini,
+      },
       'Smart Lock': {
         model: SwitchBotModel.Lock,
         bleModel: SwitchBotBLEModel.Lock,
@@ -585,6 +601,18 @@ export abstract class deviceBase {
         bleModel: SwitchBotBLEModel.LockPro,
         bleModelName: SwitchBotBLEModelName.LockPro,
         bleModelFriendlyName: SwitchBotBLEModelFriendlyName.LockPro,
+      },
+      'Smart Lock Ultra': {
+        model: SwitchBotModel.LockUltra,
+        bleModel: SwitchBotBLEModel.LockUltra,
+        bleModelName: SwitchBotBLEModelName.LockUltra,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.LockUltra,
+      },
+      'Lock Ultra': {
+        model: SwitchBotModel.LockUltra,
+        bleModel: SwitchBotBLEModel.LockUltra,
+        bleModelName: SwitchBotBLEModelName.LockUltra,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.LockUltra,
       },
       'Color Bulb': {
         model: SwitchBotModel.ColorBulb,
@@ -675,6 +703,42 @@ export abstract class deviceBase {
         bleModel: SwitchBotBLEModel.Unknown,
         bleModelName: SwitchBotBLEModelName.Unknown,
         bleModelFriendlyName: SwitchBotBLEModelFriendlyName.Unknown,
+      },
+      'Air Purifier': {
+        model: SwitchBotModel.AirPurifier,
+        bleModel: SwitchBotBLEModel.AirPurifier,
+        bleModelName: SwitchBotBLEModelName.AirPurifier,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifier,
+      },
+      'Air Purifier Table': {
+        model: SwitchBotModel.AirPurifierTable,
+        bleModel: SwitchBotBLEModel.AirPurifierTable,
+        bleModelName: SwitchBotBLEModelName.AirPurifierTable,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifierTable,
+      },
+      'Air Purifier VOC': {
+        model: SwitchBotModel.AirPurifier,
+        bleModel: SwitchBotBLEModel.AirPurifier,
+        bleModelName: SwitchBotBLEModelName.AirPurifier,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifier,
+      },
+      'Air Purifier Table VOC': {
+        model: SwitchBotModel.AirPurifierTable,
+        bleModel: SwitchBotBLEModel.AirPurifierTable,
+        bleModelName: SwitchBotBLEModelName.AirPurifierTable,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifierTable,
+      },
+      'Air Purifier PM2.5': {
+        model: SwitchBotModel.AirPurifier,
+        bleModel: SwitchBotBLEModel.AirPurifier,
+        bleModelName: SwitchBotBLEModelName.AirPurifier,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifierPM2_5,
+      },
+      'Air Purifier Table PM2.5': {
+        model: SwitchBotModel.AirPurifierTable,
+        bleModel: SwitchBotBLEModel.AirPurifierTable,
+        bleModelName: SwitchBotBLEModelName.AirPurifierTable,
+        bleModelFriendlyName: SwitchBotBLEModelFriendlyName.AirPurifierTablePM2_5,
       },
     }
     const defaultDevice = {

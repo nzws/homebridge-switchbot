@@ -53,7 +53,7 @@ export interface options {
   logging?: string
 };
 
-export type devicesConfig = botConfig | relaySwitch1Config | relaySwitch1PMConfig | meterConfig | meterProConfig | indoorOutdoorSensorConfig | humidifierConfig | curtainConfig | blindTiltConfig | contactConfig | motionConfig | waterDetectorConfig | plugConfig | colorBulbConfig | stripLightConfig | ceilingLightConfig | lockConfig | hubConfig
+export type devicesConfig = botConfig | relaySwitch1Config | relaySwitch1PMConfig | meterConfig | meterProConfig | indoorOutdoorSensorConfig | humidifierConfig | curtainConfig | blindTiltConfig | contactConfig | motionConfig | waterDetectorConfig | plugConfig | colorBulbConfig | stripLightConfig | ceilingLightConfig | lockConfig | hubConfig | airPurifierConfig
 
 export interface BaseDeviceConfig extends device {
   bleMac?: string
@@ -182,6 +182,13 @@ export interface motionConfig extends BaseDeviceConfig {
   set_maxLux?: number
 };
 
+export interface presenceConfig extends BaseDeviceConfig {
+  configDeviceType: 'Presence Sensor'
+  hide_lightsensor?: boolean
+  set_minLux?: number
+  set_maxLux?: number
+};
+
 export interface waterDetectorConfig extends BaseDeviceConfig {
   configDeviceType: 'Water Detector'
   hide_leak?: boolean
@@ -189,7 +196,7 @@ export interface waterDetectorConfig extends BaseDeviceConfig {
 };
 
 export interface plugConfig extends BaseDeviceConfig {
-  configDeviceType: 'Plug' | 'Plug Mini (US)' | 'Plug Mini (JP)'
+  configDeviceType: 'Plug' | 'Plug Mini (US)' | 'Plug Mini (JP)' | 'Plug Mini (EU)'
 };
 
 export interface colorBulbConfig extends BaseDeviceConfig {
@@ -211,19 +218,23 @@ export interface ceilingLightConfig extends BaseDeviceConfig {
 };
 
 export interface lockConfig extends BaseDeviceConfig {
-  configDeviceType: 'Smart Lock' | 'Smart Lock Pro'
+  configDeviceType: 'Smart Lock' | 'Smart Lock Pro' | 'Smart Lock Ultra' | 'Lock Ultra'
   hide_contactsensor?: boolean
   activate_latchbutton?: boolean
 };
 
 export interface hubConfig extends BaseDeviceConfig {
-  configDeviceType: 'Hub 2'
+  configDeviceType: 'Hub 2' | 'Hub Mini 2' | 'Hub 3'
   hide_temperature?: boolean
   convertUnitTo?: string
   hide_humidity?: boolean
   hide_lightsensor?: boolean
   set_minLux?: number
   set_maxLux?: number
+};
+
+export interface airPurifierConfig extends BaseDeviceConfig {
+  configDeviceType: 'Air Purifier' | 'Air Purifier Table' | 'Air Purifier VOC' | 'Air Purifier Table VOC' | 'Air Purifier PM2.5' | 'Air Purifier Table PM2.5'
 };
 
 export type irDevicesConfig = irFanConfig | irLightConfig | irAirConfig | irOtherConfig

@@ -171,6 +171,9 @@
 - [SwitchBot Hub 2](https://us.switch-bot.com/products/switchbot-hub-2)
   - Supports OpenAPI & Bluetooth Low Energy (BLE) Connections
     - Enables Humidity, Temperature, and Light Sensor
+- [SwitchBot Hub Mini 2](https://us.switch-bot.com/products/switchbot-hub-mini-2)
+  - Supports OpenAPI & Bluetooth Low Energy (BLE) Connections
+    - Enables Humidity, Temperature, and Light Sensor
 - [SwitchBot Hub 3](https://us.switch-bot.com/products/switchbot-hub-3)
   - Supports OpenAPI & Bluetooth Low Energy (BLE) Connections
     - Enables Humidity, Temperature, and Light Sensor
@@ -181,7 +184,7 @@
 
 ## Supported IR Devices
 
-### _(All IR Devices require [SwitchBot Hub 2](https://us.switch-bot.com/products/switchbot-hub-2), [SwitchBot Hub 3](https://us.switch-bot.com/products/switchbot-hub-3), or [Hub Mini](https://www.switch-bot.com/products/switchbot-hub-mini))_
+### _(All IR Devices require [SwitchBot Hub 2](https://us.switch-bot.com/products/switchbot-hub-2), [SwitchBot Hub Mini 2](https://us.switch-bot.com/products/switchbot-hub-mini-2), [SwitchBot Hub 3](https://us.switch-bot.com/products/switchbot-hub-3), or [Hub Mini](https://www.switch-bot.com/products/switchbot-hub-mini))_
 
 - TV
   - Allows for On/Off and Volume Controls
@@ -223,6 +226,16 @@
 - [OpenWonderLabs/node-switchbot](https://github.com/OpenWonderLabs/node-switchbot)
   - [OpenWonderLabs/SwitchBotAPI](https://github.com/OpenWonderLabs/SwitchBotAPI)
   - [OpenWonderLabs/SwitchBotAPI-BLE](https://github.com/OpenWonderLabs/SwitchBotAPI-BLE)
+
+## Development / Tests
+
+- Run unit tests:
+  ```bash
+  npm run test
+  ```
+
+- Notes:
+  - Added Lock Ultra (Cloud + BLE) support (requires `node-switchbot` v3.6.3).
 
 ## Community
 
